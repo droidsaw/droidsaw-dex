@@ -1,0 +1,18 @@
+[package]
+name = "droidsaw-dex"
+version = "0.1.0"
+edition = "2021"
+license = "BSD-3-Clause"
+description = "DROIDSAW Dalvik bytecode (DEX) decompiler. Builds CFG, SSA form, infers types, emits Java source. 179 tests across 5 DEX versions (035–041)."
+repository = "https://github.com/droidsaw/droidsaw-dex"
+homepage = "https://droidsaw.com"
+keywords = ["android", "dalvik", "dex", "decompiler", "bytecode"]
+categories = ["development-tools", "parser-implementations"]
+
+[dependencies]
+scroll = "0.13"
+thiserror = "2"
+adler = "1"
+droidsaw-common = "0.1.0"
+
+[workspace]
