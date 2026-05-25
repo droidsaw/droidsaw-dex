@@ -1,0 +1,25 @@
+# Source-of-truth fingerprint for javac-21 lowering of enhanced-for over array.
+#
+# `for (T x : array) { body }` lowers DIFFERENTLY from the Iterable form:
+#   T[] $tmp = array;
+#   int $len = $tmp.length;
+#   for (int $i = 0; $i < $len; $i++) {
+#       T x = $tmp[$i];
+#       body
+#   }
+#
+# The DIFFERENCE between this and `enhanced_for_iterable` is the load-bearing
+# discriminator: array form uses indexed access; Iterable form uses Iterator.
+# Both recover to `Stmt::ForEach`, but the recognizers differ.
+
+toolchain = "javac"
+version = "21"
+construct = "enhanced_for_array"
+discriminant_kind = "Array"
+outer_form = "indexed for-loop on synthetic length local"
+arm_pattern = "array-load via synthetic index"
+recovers = "Stmt::ForEach { var: $X$, iterable: $XS$, body: $BODY$, provenance: Provenance { source_dialect: SourceDialect::Java(JavaVersion::V21), ... } }"
+
+[version_pin]
+javac = "21"
+d8 = "AGP 8.x"

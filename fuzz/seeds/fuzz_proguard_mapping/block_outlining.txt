@@ -1,0 +1,11 @@
+# compiler: R8
+# compiler_version: 9.0.32
+# min_api: 24
+# common_typos_disable
+# {"id":"com.android.tools.r8.mapping","version":"2.2"}
+# pg_map_id: 56380094af538d4222da99d5b86af979cccffd441904cbee2cb472eca317274e
+# pg_map_hash: SHA-256 56380094af538d4222da99d5b86af979cccffd441904cbee2cb472eca317274e
+RepeatedPattern -> RepeatedPattern:
+# {"id":"sourceFile","fileName":"RepeatedPattern.java"}
+    1:1:int methodA(int,int):13:13 -> driver
+    1:1:int driver(int,int):37 -> driver

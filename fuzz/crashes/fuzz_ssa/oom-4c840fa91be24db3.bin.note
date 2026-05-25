@@ -1,0 +1,12 @@
+stage: ssa (amplification; dex-hardening-sweep extended campaign)
+kind: OOM (libFuzzer rss > 2GiB — exit 71 at ~408k execs)
+site: DexFile::parse or SSA construction — 115-byte input with
+  `dex\n041\0` header prefix and count/size fields amplifying to a
+  multi-GiB allocation before SSA analysis runs
+repro: cargo fuzz run fuzz_ssa fuzz/crashes/fuzz_ssa/oom-4c840fa91be24db3.bin
+size: 115 bytes
+
+Distinct from oom-5263e994fb0c / oom-6772da4a3bbd (both filed earlier
+by dex-hardening for fuzz_ssa). Filed for `dex-resource-limits` — out
+of scope for `dex-hardening-sweep`. Remediation: parse-time caps on
+header count fields bounded against `data.len()`.

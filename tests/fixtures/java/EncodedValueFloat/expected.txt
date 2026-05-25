@@ -1,0 +1,9 @@
+zero=00000000
+neg_zero=80000000
+one=3F800000
+neg_one=BF800000
+min_normal=00800000
+max=7F7FFFFF
+pos_inf=7F800000
+neg_inf=FF800000
+nan=7FC00000

@@ -1,0 +1,46 @@
+# Source-of-truth fingerprint for kotlinc-1.9.22 lowering of `when (sealed-class)`.
+#
+# kotlinc 1.9.22 lowers `when (x: SealedClass) { is Sub1 -> ...; is Sub2 -> ... }`
+# to a linear if-chain on `instanceof`:
+#
+#   per arm:
+#     aload <discriminant>
+#     instanceof <Sub>            ;; check runtime type
+#     ifeq <next-arm-or-default>  ;; not this subtype → fall through
+#     <arm body>
+#     goto <return-merge>
+#   default fall-through:
+#     new kotlin/NoWhenBranchMatchedException
+#     dup
+#     invokespecial <init>:()V
+#     athrow                      ;; Kotlin runtime exhaustiveness throw
+#
+# No threshold-driven migration to tableswitch up through 50 arms. The
+# `NoWhenBranchMatchedException` athrow at fall-through is the strongest
+# single-symbol discriminator (Java hand-written code never emits this).
+#
+# Recognizer rejects ≤2-arm shapes unless the discriminant's static type
+# carries a kotlin.Metadata annotation.
+#
+# References:
+# - droidsaw-dex/src/signatures/kotlinc19/when_sealed_class.rs.
+
+toolchain = "kotlinc"
+version = "1.9.22"
+construct = "when_sealed_class"
+discriminant_kind = "SealedSubtype"
+outer_form = "linear if-chain on instanceof <Sub>"
+arm_pattern = """
+[
+  Aload($DISCRIM$),
+  Instanceof($SUB_N$),
+  Ifeq($NEXT_OR_DEFAULT$),
+  $ARM_BODY$,
+  Goto($RETURN$),
+]
+"""
+recovers = "Stmt::MultiArm { discriminant: Discriminant::SealedSubtype { var, sealed_root }, arms: [(ArmPattern::SealedTypeIs($SUB$), $BODY$), ...], default: None /* Kotlin exhaustiveness via athrow */, provenance: Provenance { source_dialect: SourceDialect::Kotlin(KotlinVersion::V19), ... } }"
+
+[version_pin]
+kotlinc = "1.9.22"
+d8 = "AGP 8.x"

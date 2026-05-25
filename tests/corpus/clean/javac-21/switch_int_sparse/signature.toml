@@ -1,0 +1,18 @@
+# Source-of-truth fingerprint for javac-21 lowering of sparse-int switch.
+#
+# When `switch (int)` arms are sparsely distributed, javac emits a
+# `lookupswitch` opcode — sorted (key, target) table, binary-searched at
+# runtime. The recovered IR shape is identical to dense-int switch (a
+# `Stmt::MultiArm` over int literals); only the bytecode opcode differs.
+
+toolchain = "javac"
+version = "21"
+construct = "switch_int_sparse"
+discriminant_kind = "Int"
+outer_form = "lookupswitch"
+arm_pattern = "binary-search match against sorted key table"
+recovers = "Stmt::MultiArm { discriminant: Discriminant::Int(_), arms: [(ArmPattern::IntLiterals($LITS$), $BODY$), ...], default: $D$, provenance: Provenance { source_dialect: SourceDialect::Java(JavaVersion::V21), ... } }"
+
+[version_pin]
+javac = "21"
+d8 = "AGP 8.x"

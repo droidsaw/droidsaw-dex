@@ -1,0 +1,2 @@
+In method(A[]), length: 0
+In method(B[]), length: 0

@@ -1,0 +1,16 @@
+# Source-of-truth fingerprint for R8 9.0 Enum.values() caching.
+#
+# Repeated `MyEnum.values()` calls are lifted into a single static field
+# initialised once in `<clinit>`. Every use becomes a static-field read.
+
+toolchain = "r8"
+version = "9.0"
+construct = "enum_values_cache"
+discriminant_kind = "EnumValuesField"
+outer_form = "static field of enum-array type"
+arm_pattern = "<clinit> calls Enum.values(); use sites sget-object the field"
+recovers = "Stmt::Expr referring to enum-values field; emit rewrites field-reads back to `MyEnum.values()` and tags the rewrite with R8Origin { variant: R8Transform::EnumValuesCached, ..., confidence: 100 }."
+
+[version_pin]
+javac = "21"
+d8 = "AGP 8+"

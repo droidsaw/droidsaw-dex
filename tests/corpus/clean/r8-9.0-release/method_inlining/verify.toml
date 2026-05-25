@@ -1,0 +1,14 @@
+# Structural assertion for the method-inlining recogniser (Wave 2A).
+#
+# Empirical post-R8 shape (specific PCs / branch counts) will be
+# populated when Wave 2A's recogniser runs against this fixture.
+
+construct = "method_inlining"
+expected_transform = "MethodInlined"
+
+[expected]
+# `clamp` should not appear as a defined method after R8 inlining.
+helper_method_eliminated = true
+# The body of `entry` should contain the inlined clamp logic — at least
+# two conditional branches (the two ifs inside clamp).
+inlined_branch_count_min = 2

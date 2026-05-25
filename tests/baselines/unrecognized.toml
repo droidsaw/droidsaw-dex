@@ -1,0 +1,69 @@
+# Per-APK UNRECOGNIZED_REGION ratchet baselines.
+#
+# Read by `tests/unrecognized_ratchet.rs`. Each entry pins:
+#  - `path`: absolute path on the dev box (corpus is opt-in).
+#  - `sha256`: load-bearing SHA-256 of the APK contents. The ratchet test
+#    fails LOUD on SHA mismatch ("APK rotated; baseline stale — re-baseline
+#    explicitly") rather than silently re-baselining; this preserves the
+#    per-APK monotone-decreasing invariant when the file at that path
+#    rotates between dev boxes or after an upstream APK release.
+#  - `baseline_count`: maximum allowed UNRECOGNIZED_REGION findings. The
+#    test asserts `actual <= baseline_count`. Reductions (`actual <
+#    baseline_count`) are improvements; the baseline tightens manually
+#    via a follow-up commit (intentional ratchet move) per the
+#    "monotone-decreasing" discipline.
+#  - `notes`: source-of-truth context — what produces the count, what
+#    follow-up work owns reductions.
+#
+# Discipline:
+# - **Per-APK monotone, NOT global.** Each tracked APK is gated against
+#   its own baseline. We do NOT chase a global "decompile success rate"
+#   across an open-ended input space.
+# - **APKs are opt-in.** SKIP-clean when a file is absent (e.g. CI / fresh
+#   dev-box without the corpus); FAIL LOUD on SHA mismatch.
+# - **Tagged-region sentinels excluded by construction.** The
+#   `collect_unrecognized_findings` walker filters
+#   `NoSignatureMatch{closest:Some(_), distance:0}` (e.g. coroutine_suspend
+#   `SignatureId(105)`) out before producing a finding. Counts here are
+#   genuine recognizer-failure regions only.
+#
+# Bootstrap counts captured from audit-subcommand smoke runs.
+
+version = 1
+
+[[apk]]
+path = "/path/to/corpus/apks/threads-base.apk"
+sha256 = "3b55cae5b9faf66b32471011579eb402a967b8e22de0be80972a22aa399fd7b0"
+baseline_count = 3
+notes = """
+javac+kotlinc clean pipeline (R8-processed production APKs).
+Expected ~0 after #4 (`dex-signatures-javac21`) + #5
+(`dex-signatures-kotlinc`) fully land. Current 3 represent regions
+where the kotlinc-1.9 recognizers identify a candidate shape but a
+deviation prevents lift; reductions land via #4 / #5 follow-ups.
+"""
+
+[[apk]]
+path = "/path/to/corpus/apks/cerberus-base.apk"
+sha256 = "b43e7b16841e2058017a75fb2a211fe2dc2e7f442d244e47d16559ad801ce7a1"
+baseline_count = 7
+notes = """
+DexGuard pipeline (Cerberus stalkerware base APK).
+13 → 7 ratchet via #47 (`dex-decompile-string-switch-json-parser-shape`):
+extended `extract_const_int_assign` to accept R8
+const-hoisted `Move v_tag, v_const_src` against a method-wide
+const-int env. Closes 6 of the 13 StringSwitchSignature distance-1
+near-misses (the const-hoisted variants); the remaining 7 are other
+deviations not covered by this relaxation alone — follow-up scope.
+"""
+
+[[apk]]
+path = "/path/to/corpus/apks/cerberus-persona2-base.apk"
+sha256 = "ee1171235adb4d774d0afcee2869aebd58e602d1fced39332b785f14a2b10ee1"
+baseline_count = 7
+notes = """
+Same protector as `cerberus-base.apk`, persona2 version delta.
+Matching baseline_count (7) post-#47 confirms the R8 const-hoist
+shape is stable across persona variants — useful regression sentinel
+for the remaining 7 deviations follow-up.
+"""

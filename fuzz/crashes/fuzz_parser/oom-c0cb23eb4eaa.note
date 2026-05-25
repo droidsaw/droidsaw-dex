@@ -1,0 +1,17 @@
+stage: parser (amplification)
+kind: OOM (libFuzzer aborted on malloc(31,675,383,808) ≈ 31 GiB)
+site: DexFile::parse — allocation driven by an unchecked header size field
+repro: cargo fuzz run fuzz_parser fuzz/crashes/fuzz_parser/oom-c0cb23eb4eaa
+size: 3120 bytes
+
+Surfaced during the extended 5-minute smoke. A 3 KiB DEX input drives
+parse into a single 31 GiB allocation — classic amplification from a
+header count field (string_ids_size, type_ids_size, proto_ids_size,
+field_ids_size, method_ids_size, or class_defs_size) not bounded
+against the actual file size before being used to pre-allocate a Vec.
+
+Filed for `dex-hardening-sweep`. The general defense: at parse time,
+reject any entity count N where N * sizeof(entry) > data.len(). This
+same check should cover the two fuzz_cfg / fuzz_ssa OOMs filed
+alongside this one, since those amplifications also ride an oversized
+count field through parse first.

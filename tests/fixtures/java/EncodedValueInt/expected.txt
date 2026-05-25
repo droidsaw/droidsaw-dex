@@ -1,0 +1,8 @@
+zero=0
+one_byte=127
+two_byte=4660
+three_byte=1193046
+four_byte=305419896
+pos_max=2147483647
+neg_one=-1
+neg_max=-2147483648

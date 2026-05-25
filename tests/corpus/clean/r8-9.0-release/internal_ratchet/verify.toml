@@ -1,0 +1,21 @@
+# Structural assertion for the internal-build ratchet fixture.
+#
+# Unlike per-construct verify files which assert a SPECIFIC recogniser
+# fires, this fixture asserts the ratchet INFRASTRUCTURE works: a
+# synthesized class lands in mapping.txt, the ratchet reads it, and
+# the FP gate has 0 violations.
+
+construct = "internal_ratchet"
+expected_transform = "MixedShape"
+
+[expected]
+# At least one com.android.tools.r8.synthesized class is recorded in
+# mapping.txt. The EnumUnboxingSharedUtility from Color.values()
+# iteration is the empirical anchor.
+synthesized_class_count_min = 1
+
+# No BlockOutlined markers expected: this fixture's enum-unboxing
+# helpers don't have trampoline-shaped callers (Gate 4 correctly
+# declines). Future fixtures may add outlining-shape sources that
+# DO trigger markers; this one's role is FP-gate validation.
+block_outlined_marker_count = 0

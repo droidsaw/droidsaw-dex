@@ -1,0 +1,29 @@
+# compiler: R8
+# compiler_version: 9.0.32
+# min_api: 24
+# common_typos_disable
+# {"id":"com.android.tools.r8.mapping","version":"2.2"}
+# pg_map_id: 2e256dd84cad46e9b2f184e88b381a075ff29b9557f701f95a14c39fdbee63e9
+# pg_map_hash: SHA-256 2e256dd84cad46e9b2f184e88b381a075ff29b9557f701f95a14c39fdbee63e9
+Simple -> Simple:
+# {"id":"sourceFile","fileName":"Simple.java"}
+    2:5:Simple$Color[] Simple$Color.values():10:10 -> countBlue
+    2:5:int countBlue():32 -> countBlue
+    6:20:int countBlue():32:32 -> countBlue
+    2:5:Simple$Color[] Simple$Color.values():10:10 -> countGreen
+    2:5:int countGreen():24 -> countGreen
+    6:21:int countGreen():24:24 -> countGreen
+    2:5:Simple$Color[] Simple$Color.values():10:10 -> countRed
+    2:5:int countRed():16 -> countRed
+    6:21:int countRed():16:16 -> countRed
+Simple$Color -> R8$$REMOVED$$CLASS$$0:
+# {"id":"sourceFile","fileName":"Simple.java"}
+Simple$Color$EnumUnboxingSharedUtility -> a:
+# {"id":"sourceFile","fileName":"R8$$SyntheticClass"}
+# {"id":"com.android.tools.r8.synthesized"}
+    int[] $VALUES -> a
+      # {"id":"com.android.tools.r8.synthesized"}
+    1:10:void <clinit>():0:0 -> <clinit>
+      # {"id":"com.android.tools.r8.synthesized"}
+    1:1:int[] values(int):0:0 -> a
+      # {"id":"com.android.tools.r8.synthesized"}

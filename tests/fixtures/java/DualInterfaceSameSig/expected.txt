@@ -1,0 +1,2 @@
+In foo on InterfaceImpl
+In foo on InterfaceImpl

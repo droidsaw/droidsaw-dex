@@ -1,0 +1,14 @@
+# Source-of-truth fingerprint for R8 9.0 dead-code elimination on a
+# constant-conditional branch.
+
+toolchain = "r8"
+version = "9.0"
+construct = "dce_unreachable_branch"
+discriminant_kind = "DeadBranch"
+outer_form = "absent branch (R8 stripped)"
+arm_pattern = "method body lacks the if-true arm"
+recovers = "annotation-only R8Origin { variant: R8Transform::DeadBranchStripped, source_pc, ..., confidence: 60 } — heuristic; orphan SSA defs / unreachable-block remnants are the only surviving cue."
+
+[version_pin]
+javac = "21"
+d8 = "AGP 8+"

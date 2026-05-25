@@ -1,0 +1,22 @@
+# Source-of-truth fingerprint for javac-21 lowering of try-with-resources.
+#
+# javac-21 lowers `try (R r = ...) { body }` to:
+#   - hidden `Throwable primaryExc = null;` synthetic local
+#   - `try { body }` with `catch (Throwable t) { primaryExc = t; throw t; }`
+#   - `finally { if (r != null) { if (primaryExc != null) { try { r.close(); }
+#       catch (Throwable suppressed) { primaryExc.addSuppressed(suppressed); } }
+#       else { r.close(); } } }`
+#
+# The state-machine + addSuppressed pattern is the load-bearing fingerprint.
+
+toolchain = "javac"
+version = "21"
+construct = "try_with_resources"
+discriminant_kind = "ControlFlow"
+outer_form = "synthetic try/catch/finally with primaryExc tracking"
+arm_pattern = "addSuppressed on close exception path"
+recovers = "Stmt::TryWithResources { resource: $R$, body: $BODY$, ... } [variant introduced by stream #4 dex-signatures-javac21]"
+
+[version_pin]
+javac = "21"
+d8 = "AGP 8.x"

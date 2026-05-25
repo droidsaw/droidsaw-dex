@@ -1,0 +1,10 @@
+# compiler: R8
+# compiler_version: 9.0.32
+# min_api: 24
+# common_typos_disable
+# {"id":"com.android.tools.r8.mapping","version":"2.2"}
+# pg_map_id: 2fdf7d2242d7430d53fe7cb3456c428beaa89621c8042976c2675b71f73b0f05
+# pg_map_hash: SHA-256 2fdf7d2242d7430d53fe7cb3456c428beaa89621c8042976c2675b71f73b0f05
+SingleCall -> SingleCall:
+# {"id":"sourceFile","fileName":"SingleCall.java"}
+    1:1:int entry(int):0:0 -> entry

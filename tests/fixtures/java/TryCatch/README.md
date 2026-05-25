@@ -1,0 +1,11 @@
+# TryCatch
+
+**Covers.** `try / catch` with a single exception type plus `try / catch / finally`. Exercises DEX exception-region recovery and the structuring pass's conversion of Dalvik catch tables back into Java try-blocks.
+
+**Status.** `compile_pass`.
+
+**History.** Previously `compile_fail` at the `Recompile` stage: `divFinally` decompiled with `System.out.println("done")` inside the try and two sibling `catch` bodies referencing the same local, which javac rejected with `cannot find symbol` on the pre-try local `v0`. Initial hypothesis was a dropped catch-exception binding (`NumberFormatException e`). An audit of the Stmt tree inverted that diagnosis: the catch bodies did not contain a `const-string` for the local — d8's optimizer had hoisted the finally-inlined `const-string v0, "done"` to the method entry (`addr=0`), before the try region starts at `addr=2`. The decompiler's structuring pass then wrapped the entire method body (including the pre-try const-string) as the try body because `structure::wrap_try_catch` ignored each `ExceptionRegion`'s `start_addr` / `end_addr` and sank every top-level Stmt into the try block.
+
+**Fix.** `wrap_try_catch` now partitions the input Stmt's top-level Seq by region address bounds into `(pre, in_region, post)` and wraps only the in-region slice. Stmts without addresses (terminators like `Return` / `Throw`) attach to the surrounding addr-bearing group so that, e.g., a `Return` at the tail of the try region lands inside the try body. Pre-region definitions stay at the enclosing scope and become visible to every sibling catch clause, which is what Java scoping actually requires. Fixed in the `dex-decompile-trycatch` stream; ratchet-tracked as `Improvement::CompileFailNowPasses` then manifest-flipped to `compile_pass`.
+
+**Known latent defect.** The emit layer's shared `declared: &mut BTreeSet<VarId>` frontier is *also* wrong for Java's block scoping — if a fixture exercises try/catch where d8 did NOT hoist a const to a common dominator (i.e. each catch body has its own `const-string` for the same register), the emit pass would still elide the per-catch re-declaration. The current 10-fixture matrix doesn't hit that shape; this defect is tracked as a separate enhancement.

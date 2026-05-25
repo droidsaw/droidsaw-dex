@@ -1,0 +1,21 @@
+# Source-of-truth fingerprint for the internal-build ratchet fixture.
+#
+# This fixture is NOT a per-construct fingerprint like the four Wave 1B
+# fixtures (block_outlining, method_inlining, enum_values_cache,
+# dce_unreachable_branch). It exercises the mapping-paired ratchet
+# pipeline end-to-end with a mixed-shape source — multiple constructs
+# coexist in one Java file so the ratchet's cross-reference machinery
+# (markers vs com.android.tools.r8.synthesized set) has something
+# non-trivial to validate.
+
+toolchain = "r8"
+version = "9.0"
+construct = "internal_ratchet"
+discriminant_kind = "MixedShape"
+outer_form = "single-source-multi-construct"
+arm_pattern = "InternalRatchet$Color$EnumUnboxingSharedUtility -> a (synthesized); driverA/B/C inlined; control* unchanged"
+recovers = "End-to-end pipeline: corpus walker → R8 produces (classes.dex, mapping.txt) → r8_oracle_ratchet reads both → cross-references markers vs synthesized set. Falsification gauge for the ratchet infrastructure itself."
+
+[version_pin]
+javac = "21"
+d8 = "AGP 8+"

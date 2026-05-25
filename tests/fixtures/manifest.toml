@@ -1,0 +1,303 @@
+version = 1
+
+# Language-coverage fixture matrix for droidsaw-dex, tier-1 consumer of
+# droidsaw-fixture-harness. Each entry drives the pipeline:
+#   javac(src.java) → d8 → droidsaw_dex::decompile_class → javac → java.
+# The fixture passes if both the original java run and the decompiled-then-
+# recompiled java run match expected.txt verbatim.
+#
+# status = "compile_pass" — baseline: all stages complete, diff-clean against
+#                          expected.txt.
+# status = "compile_fail" — baseline: some stage returns a typed error
+#                          (javac/d8/decompile/recompile/java).
+# SemanticFail / ResourceLimitExceeded are outcome-only; check_ratchet
+# always flags them as regressions, and Manifest::load rejects them here.
+
+[[fixture]]
+name = "EmptyClass"
+source = "java/EmptyClass/src.java"
+expected_stdout = "java/EmptyClass/expected.txt"
+status = "compile_pass"
+
+[[fixture]]
+name = "SingleMethod"
+source = "java/SingleMethod/src.java"
+expected_stdout = "java/SingleMethod/expected.txt"
+status = "compile_pass"
+
+[[fixture]]
+name = "IfElse"
+source = "java/IfElse/src.java"
+expected_stdout = "java/IfElse/expected.txt"
+status = "compile_pass"
+
+[[fixture]]
+name = "LoopBasic"
+source = "java/LoopBasic/src.java"
+expected_stdout = "java/LoopBasic/expected.txt"
+status = "compile_pass"
+
+[[fixture]]
+name = "Switch"
+source = "java/Switch/src.java"
+expected_stdout = "java/Switch/expected.txt"
+status = "compile_pass"
+
+[[fixture]]
+name = "TryCatch"
+source = "java/TryCatch/src.java"
+expected_stdout = "java/TryCatch/expected.txt"
+status = "compile_pass"
+
+[[fixture]]
+name = "TryResources"
+source = "java/TryResources/src.java"
+expected_stdout = "java/TryResources/expected.txt"
+status = "compile_pass"
+notes = "graduated by dex-decompile-try-resources: cross-catch SSA-scope leak fixed via method-scope hoist of escaped catch-vars (typed RuntimeException + narrowing cast, to sidestep checked-exception rules without a cascading throws declaration). Sugar reconstruction remains out of scope; a future fixture with an exercised exception path would stress the narrowing — tracked as follow-up `dex-decompile-throws-analysis`."
+
+[[fixture]]
+name = "Interface"
+source = "java/Interface/src.java"
+expected_stdout = "java/Interface/expected.txt"
+status = "compile_pass"
+notes = "graduated by dex-decompile-interface-covariance: misdiagnosed originally as covariant-widening — the real defect was that ACC_INTERFACE on the class_def was ignored, so `interface Shape` rendered as `abstract class Shape`, making `Square implements Shape` illegal. Fix emits `interface` keyword and `extends` (not `implements`) for interface parents. javac accepts implicit Square→Shape widening once Shape is properly an interface."
+
+[[fixture]]
+name = "AbstractMethod"
+source = "java/AbstractMethod/src.java"
+expected_stdout = "java/AbstractMethod/expected.txt"
+status = "compile_pass"
+
+[[fixture]]
+name = "GenericMethod"
+source = "java/GenericMethod/src.java"
+expected_stdout = "java/GenericMethod/expected.txt"
+status = "compile_pass"
+notes = "graduated by dex-decompile-short-circuit-or-structuring: a post-structure rewrite pass in `src/structure.rs::reconstruct_short_circuit_guards` collapses the `If{A, Return(X), Some(Seq[setup, If{B, Return(Y), None}])}` nested-if-else-tail shape (from javac-lowered `||` short-circuits) into `[If{A, Return(X), None}, setup, If{B, Return(Y), None}, Return(X)]` — two sibling guards + trailing fallback. Duplicating `Return(X)` is safe because the outer then_body is restricted to `Stmt::Return(Option<VarId>)` (no side-effects on re-evaluation). Generic erasure to `Object` remains expected + out of scope; signature reconstruction is a separate `dex-decompile-generic-signatures-pass`."
+
+# ── dex-fixture-harness-expand additions (2026-04-18) ───────────────
+# Ten new language-surface fixtures. Each starts classified at the
+# status the ratchet sees on first run; `compile_fail` entries document
+# the gap in their per-fixture README and seed candidate follow-up
+# `dex-decompile-<feature>` streams.
+
+[[fixture]]
+name = "Lambdas"
+source = "java/Lambdas/src.java"
+expected_stdout = "java/Lambdas/expected.txt"
+status = "compile_pass"
+d8_min_api = 26
+notes = "graduated by dex-decompile-lambdas: call_site_ids + method_handles now parsed from the map_list; PoolIndex::CallSite carries invoke-custom's operand; emit_invoke_custom detects LambdaMetafactory.metafactory bootstraps and lowers to explicit-lambda form with per-arg casts (`_a0 -> Class.impl((Integer)_a0)`) — method references would read cleaner but raw-erased `Function` targets reject them. sanitize_id re-prefixes `lambda$...` to `dsaw$lambda$...` so the decompiled synthetic methods don't collide with javac's own lambda$<method>$<n> naming on recompile. See java/Lambdas/README.md."
+
+[[fixture]]
+name = "LambdaCallSite"
+source = "java/LambdaCallSite/src.java"
+expected_stdout = "java/LambdaCallSite/expected.txt"
+status = "compile_pass"
+d8_min_api = 26
+notes = "graduated by dex-decompile-lambdas alongside Lambdas. Minimal single-site invoke-custom repro (`Supplier<String> s = () -> \"x\"`) — exercises the zero-capture zero-arg lambda shape. See java/LambdaCallSite/README.md."
+
+[[fixture]]
+name = "MethodHandleInvoke"
+source = "java/MethodHandleInvoke/src.java"
+expected_stdout = "java/MethodHandleInvoke/expected.txt"
+status = "compile_pass"
+d8_min_api = 26
+notes = "graduated by dex-decompile-invoke-polymorphic: new F45cc + F4rcc instruction formats carry the per-call-site proto_id through `PoolIndex::MethodAndProto`. `types.rs::invoke_polymorphic_return_type` returns the call-site proto's return (not `MethodHandle.invokeExact`'s declared `Object`), and `emit_invoke_polymorphic` emits the explicit `(ReturnType) mh.invokeExact(...)` cast that javac requires on signature-polymorphic calls. `pretty_class_name` + `emit_type` now rewrite `Outer$Inner` -> `Outer.Inner` for `java.*` / `javax.*` / `kotlin*` standard-library paths (required to source-reference `MethodHandles.Lookup`). `patch_throws_throwable_on_method_signatures` trigger broadened to include `MethodHandle.invoke*` / `findStatic` call sites, so the main() signature picks up `throws Throwable`. See java/MethodHandleInvoke/README.md."
+
+[[fixture]]
+name = "MultiCatch"
+source = "java/MultiCatch/src.java"
+expected_stdout = "java/MultiCatch/expected.txt"
+status = "compile_pass"
+notes = "graduated by dex-decompile-multicatch: emit-layer collapse of consecutive CatchClauses with byte-identical body Stmt trees into a single `catch (T1 | T2 | T3 binding)` clause. Binding name derived from the body's first phi-merged use of the catch-register — resolves the prior `v1_14.getMessage()` unbound-symbol error by making v1_14 the catch binding itself (shadows nothing; matches the body's existing reference). See java/MultiCatch/README.md."
+
+[[fixture]]
+name = "StaticNestedClass"
+source = "java/StaticNestedClass/src.java"
+expected_stdout = "java/StaticNestedClass/expected.txt"
+status = "compile_pass"
+notes = "recompile fails: the nested class `StaticNestedClass$Counter` decompiles in isolation but is not concatenated into the per-fixture recompile set, so `new Counter()` references an unresolved type. Same root symptom across StaticNestedClass / AnonymousInnerClass / LocalInnerClass / EnumWithMethods — the runner concatenates top-level classes but not their nested class_defs. Candidate follow-up: `dex-decompile-nested-classes` (covers all four nested-class-emission fixtures). See java/StaticNestedClass/README.md."
+
+[[fixture]]
+name = "AnonymousInnerClass"
+source = "java/AnonymousInnerClass/src.java"
+expected_stdout = "java/AnonymousInnerClass/expected.txt"
+status = "compile_pass"
+notes = "recompile fails: the synthetic `AnonymousInnerClass$1` subclass (the anonymous Runnable impl) is not included in the recompile set, so `new Runnable() { ... }` decompiles as `new AnonymousInnerClass$1()` referencing an unresolved type. Same family as StaticNestedClass / LocalInnerClass / EnumWithMethods — the nested class_def is decompiled but not threaded through to the recompile concat. Candidate follow-up: `dex-decompile-nested-classes`. See java/AnonymousInnerClass/README.md."
+
+[[fixture]]
+name = "LocalInnerClass"
+source = "java/LocalInnerClass/src.java"
+expected_stdout = "java/LocalInnerClass/expected.txt"
+status = "compile_pass"
+notes = "recompile fails: the method-local class `LocalInnerClass$1Adder` is not included in the recompile set. Same family as StaticNestedClass / AnonymousInnerClass / EnumWithMethods. Candidate follow-up: `dex-decompile-nested-classes`. See java/LocalInnerClass/README.md."
+
+[[fixture]]
+name = "Varargs"
+source = "java/Varargs/src.java"
+expected_stdout = "java/Varargs/expected.txt"
+status = "compile_pass"
+notes = "recompile fails: the varargs access flag (`ACC_VARARGS` = 0x80 on methods) is emitted as `transient` (`ACC_TRANSIENT` = 0x80, same bit on fields). Decompiler output contains `static transient void show(String v4, int[] v5)` — both modifier confusion AND the loss of the `int...` signature sugar. Candidate follow-up: `dex-decompile-varargs`. See java/Varargs/README.md."
+
+[[fixture]]
+name = "EnhancedFor"
+source = "java/EnhancedFor/src.java"
+expected_stdout = "java/EnhancedFor/expected.txt"
+status = "compile_pass"
+notes = "graduated by dex-decompile-generics-and-imports as a bonus alongside the primary GenericMethod fix: the class-level import collector pre-pends `import java.util.List;` + `import java.util.Arrays;`, resolving the prior `cannot find symbol List` javac error. Iterator-pattern restoration to `for (Integer x : c)` sugar was either already present OR the raw Iterator-call form compiles + produces the expected stdout regardless — the ratchet's compile+run check is green. If a future fixture surfaces a SEMANTIC_FAIL specifically from iterator-pattern emit, a separate `dex-decompile-enhanced-for-iterable` stream would restore the sugar."
+
+[[fixture]]
+name = "StaticInitBlock"
+source = "java/StaticInitBlock/src.java"
+expected_stdout = "java/StaticInitBlock/expected.txt"
+status = "compile_pass"
+notes = "recompile fails: the `<clinit>` method is emitted as ordinary assignments referenced via the class name (`StaticInitBlock.X = 10; StaticInitBlock.Y = (v0_1 * 2);`) rather than restored to a `static { ... }` initializer block. javac rejects because X and Y are `static final` and can only be assigned in a static initializer (or declaration). Candidate follow-up: `dex-decompile-static-init`. See java/StaticInitBlock/README.md."
+
+[[fixture]]
+name = "EnumWithMethods"
+source = "java/EnumWithMethods/src.java"
+expected_stdout = "java/EnumWithMethods/expected.txt"
+status = "compile_pass"
+notes = "Graduated 2026-04-23, completing the EnumWithMethods chain: ACC_ENUM keyword emission + synth suppression ($VALUES/values()/valueOf()/$values()/super/synth-ctor/pure-pop-<clinit>) + subclass-and-marker listing-time suppression (per-const subclass + d8 `-IA` markers dropped from outer iterator) + cross-class body inlining (`EnumInlineMap` extracts each subclass's virtual method bodies and splices them into the parent enum's constant block; implicit `(String, int)` ctor params stripped). javac + java round-trip passes."
+
+[[fixture]]
+name = "StringSwitch"
+source = "java/StringSwitch/src.java"
+expected_stdout = "java/StringSwitch/expected.txt"
+status = "compile_pass"
+notes = "Graduated 2026-04-23 by Stream `dex-decompile-string-switch`. Sugar pass `reconstruct_string_switches` pattern-matches the canonical javac-lowered two-switch shape (outer `switch(s.hashCode())` + per-case `equals()`-dispatch to a tag + inner `switch(tag)`) and synthesizes a single `Stmt::StringSwitch` variant emitted as `switch(s) { case \"literal\": ... }`. Fail-closed gates for hash-collision outer cases, non-empty outer default, non-canonical case body shape, tag-label mismatch between outer + inner, and tag-var liveness in inner default. The dead `int v0 = s.hashCode();` local is left in the output (Java accepts unused locals; DCE is a future cleanup)."
+
+[[fixture]]
+name = "EncodedValueChar"
+source = "java/EncodedValueChar/src.java"
+expected_stdout = "java/EncodedValueChar/expected.txt"
+status = "compile_pass"
+notes = "Locks VALUE_CHAR encoded_value round-trip across the 1-byte vs 2-byte encoding boundary (0x0000 / 0x007F / 0x0080 / 0x00FF / 0x0100 / 0xFFFF). Primary target: sign-extension bug (parse uses `read_int` sign-extending instead of `read_uint` zero-extending at annotation.rs:360); bench-agent surfaced via alltrails/netty AsciiString#MAX_CHAR_VALUE (0x00FF → 0xFFFF widening). Initial compile_fail currently wedges on FOUR distinct emit defects: (1) 0x0080 decompiles as 0xFF80 (sign-extend bug), (2) 0x00FF decompiles as 0xFFFF (same bug), (3) MIN with value 0x0000 loses its initializer (`public static final char MIN;` uninitialised — static_values zero-elision gap), (4) 0x007F rendered as empty char literal `''` (DEL char literal-rendering gap). Graduates to compile_pass when the four are fixed; each is independently tracked. See java/EncodedValueChar/README.md."
+
+[[fixture]]
+name = "EncodedValueByte"
+source = "java/EncodedValueByte/src.java"
+expected_stdout = "java/EncodedValueByte/expected.txt"
+status = "compile_pass"
+notes = "Locks VALUE_BYTE encoded_value round-trip. Boundary values 0 / Byte.MAX_VALUE / -1 / Byte.MIN_VALUE. Byte is signed per DEX spec so sign-extension is correct; this fixture defends against regression (if a future change breaks sign-extend, ratchet surfaces). Also exercises the static-final zero-elision bug from EncodedValueChar fixture on ZERO=0."
+
+[[fixture]]
+name = "EncodedValueShort"
+source = "java/EncodedValueShort/src.java"
+expected_stdout = "java/EncodedValueShort/expected.txt"
+status = "compile_pass"
+notes = "Locks VALUE_SHORT encoded_value round-trip across 1-byte and 2-byte encoding paths. Short is signed per DEX spec. Covers zero (elision check), small positives (1-byte), small negatives (1-byte sign-extend), mid-range positives (2-byte), max/min."
+
+[[fixture]]
+name = "EncodedValueInt"
+source = "java/EncodedValueInt/src.java"
+expected_stdout = "java/EncodedValueInt/expected.txt"
+status = "compile_pass"
+notes = "Locks VALUE_INT encoded_value round-trip across 1/2/3/4-byte encoding paths. Int is signed per DEX spec. First fixture to exercise the 3-byte encoding path (VALUE_INT size=3 = 0x00800000..0x7FFFFF) where middle-byte-width bugs could hide."
+
+[[fixture]]
+name = "EncodedValueLong"
+source = "java/EncodedValueLong/src.java"
+expected_stdout = "java/EncodedValueLong/expected.txt"
+status = "compile_pass"
+notes = "Locks VALUE_LONG encoded_value round-trip across 1/4/5/8-byte encoding paths. Long is signed per DEX spec. First fixture to exercise 5-byte encoding (values requiring bit 32 set). Max/min bounds guard against any future arithmetic-overflow regression on the encoded_value size-packing logic."
+
+[[fixture]]
+name = "EncodedValueFloat"
+source = "java/EncodedValueFloat/src.java"
+expected_stdout = "java/EncodedValueFloat/expected.txt"
+status = "compile_pass"
+notes = "Locks VALUE_FLOAT encoded_value round-trip via IEEE-754 bit-pattern equality (`Float.floatToRawIntBits`). Boundary set: ±0, ±1, MIN_NORMAL, MAX, ±Infinity, NaN. Sibling fixture to EncodedValueDouble. Guards against any regression in the `read_uint_right_extend` high-bit-packed path (parent stream `dex-parse-float-double-decode-fix` @ `194ac15` fixed the `>> 32` narrowing). Also exercises the static_values zero-elision defect on the ZERO field."
+
+[[fixture]]
+name = "EncodedValueDouble"
+source = "java/EncodedValueDouble/src.java"
+expected_stdout = "java/EncodedValueDouble/expected.txt"
+status = "compile_pass"
+notes = "Locks VALUE_DOUBLE encoded_value round-trip via IEEE-754 bit-pattern equality (`Double.doubleToRawLongBits`). Boundary set: ±0, ±1, MIN_NORMAL, MAX, ±Infinity, NaN. Sibling of EncodedValueFloat; exercises the 8-byte `read_uint_right_extend` path uniquely (Long is 8-byte signed, Double is 8-byte unsigned-packed)."
+
+# ── R8 cherry-pick batch 1 (`dex-fixture-harness-expand-via-r8-batch1`, 2026-04-24) ──
+# Each entry below is adapted from a single Google R8 test source
+# (Apache-2 licensed). Sources cited in `<Name>/src.java` attribution
+# header + `<Name>/README.md`. Categories chosen to cover post-shrinking
+# Java reality corners NOT exercised by the prior 29 fixtures.
+
+[[fixture]]
+name = "ExceptionHierarchy"
+source = "java/ExceptionHierarchy/src.java"
+expected_stdout = "java/ExceptionHierarchy/expected.txt"
+status = "compile_pass"
+notes = "R8 batch-1: 4-class exception subclass chain (ExceptionA←ExceptionB, Exception1←Exception2) caught most-specific-first across 4 catch arms. Two throw sites keep all arms reachable per JLS. Family-A defect (catch-arm scope leak) fixed 2026-04-26 by `dex-decompile-ssa-temp-decl-emit`. Throws-clause defect (per-method `throws X, Y` from `dalvik.annotation.Throws`) fixed 2026-04-30 by `dex-decompile-throws-annotation-emission`. **Graduates compile_fail → compile_pass.**"
+
+[[fixture]]
+name = "ArrayOverload"
+source = "java/ArrayOverload/src.java"
+expected_stdout = "java/ArrayOverload/expected.txt"
+status = "compile_pass"
+notes = "R8 batch-1: method overload `method(A[])` vs `method(B[])` with `B extends A`. Java array covariance (`B[] <: A[]`) makes the static-type pick load-bearing. DEX preserves the param-type in the method_id. Graduated by `dex-decompile-ssa-temp-decl-emit` 2026-04-26 via `sugar.rs::reconstruct_string_concat` preserving intervening pure-op defs (e.g. arraylength) before the splice so subsequent inline + emit see the def (defect family A: arraylength def dropped by StringConcat splice)."
+
+[[fixture]]
+name = "NativeMethod"
+source = "java/NativeMethod/src.java"
+expected_stdout = "java/NativeMethod/expected.txt"
+status = "compile_pass"
+notes = "R8 batch-1: `native` method declaration (ACC_NATIVE 0x0100) on a class A, with subclass B that does not override. main guards the actual invoke behind `args.length == 42` (always false) so no JNI runtime is needed — the corner is the IR/emit shape of a native declaration. Expected stdout is empty."
+
+[[fixture]]
+name = "CtorCallGraphCycle"
+source = "java/CtorCallGraphCycle/src.java"
+expected_stdout = "java/CtorCallGraphCycle/expected.txt"
+status = "compile_pass"
+notes = "R8 batch-1: constructor with conditional branch + super() call, where the inner branch instantiates a peer object that re-enters the chain at one level shallower. Exercises ordering of `<init>` body statements relative to super() invocation. Graduated by `dex-decompile-ctor-args-and-bool-types` 2026-05-04 via two complementary fixes: (1) `sugar::lift_comparison_as_value_in_seq` lifts the `[if cmp { v=0 } else { v=1 }]` shape (and the `const-0; if cmp { } else { v=1 }` mirror) to `Stmt::BooleanAssign`, retiring the bool-vs-int int-leak miscompilation; (2) the new+init merge in `emit.rs` was broadened to match by reg with a type-soundness guard (`invoke_is_init_for_type`), retiring the args-dropped symptom for SSA-version-mismatched receivers across phi joins."
+
+[[fixture]]
+name = "SuperChain3Level"
+source = "java/SuperChain3Level/src.java"
+expected_stdout = "java/SuperChain3Level/expected.txt"
+status = "compile_pass"
+notes = "R8 batch-1: 3-level `super.m()` invocation chain (C→B→A). DEX `invoke-super` resolves on the static class context, so each link is a distinct invoke-super site. Graduated by `dex-decompile-invoke-opcode-preservation` 2026-04-26 via `InvokeKind` enum threaded through `emit_invoke`; non-`<init>` `invoke-super` on `this` now lowers to `super.m(args)` instead of collapsing to the catch-all `{receiver}.{name}()` (defect family B)."
+
+[[fixture]]
+name = "DualInterfaceSameSig"
+source = "java/DualInterfaceSameSig/src.java"
+expected_stdout = "java/DualInterfaceSameSig/expected.txt"
+status = "compile_pass"
+notes = "R8 batch-1: a single class implements two interfaces declaring the same `void foo()` signature. Two invoke-interface sites with different declared receiver types share a concrete implementation. Decompile must keep the `implements A, B` clause and both interface declarations."
+
+[[fixture]]
+name = "ShadowedFields"
+source = "java/ShadowedFields/src.java"
+expected_stdout = "java/ShadowedFields/expected.txt"
+status = "compile_fail"
+notes = "R8 batch-1: B extends A with both declaring a field named `obj`. Field shadowing keeps both fields physically. Decompile must preserve `((B) super.obj).message` exactly. **Recompile fails**: B's no-args ctor `B()` calls `this(null)` — i.e. delegates to `B(String)` which then calls `super()` (A's default ctor, no args). Decompiler instead emits `super(null)` directly in B(), which references A's nonexistent `(String)` ctor. The this-vs-super invocation distinction is the discriminator (DEX has no separate opcode — both lower to `invoke-direct` on `<init>` of the appropriate class; the type of the receiver `this` register at the call site is the cue). Candidate follow-up: `dex-decompile-this-vs-super-ctor-call` — when an `<init>` body's first instruction is `invoke-direct` on `<init>` of the SAME class, emit `this(...)`; if it targets the IMMEDIATE SUPER class, emit `super(...)`."
+
+[[fixture]]
+name = "PrivateMethodCollision"
+source = "java/PrivateMethodCollision/src.java"
+expected_stdout = "java/PrivateMethodCollision/expected.txt"
+status = "compile_pass"
+notes = "R8 batch-1: private `m()` declared on both A and `B extends A` — unrelated symbols (no override). `A.invokeM()` calls private m() which resolves at compile time to A.m. Separately, `D extends C` with public override + super.m(). Graduated by `dex-decompile-invoke-opcode-preservation` 2026-04-26 via `InvokeKind` enum (defect family B). Audit found the load-bearing hang was D.m's `invoke-super` collapse (NOT A.invokeM's invoke-direct, which already rendered as JLS-correct `this.m()`). Fix lowers `invoke-super` on `this` to `super.m(args)`, plus a bonus discriminator for `invoke-direct + same-class` → bare `m(args)` (cleaner than `this.m()`; opcode-discriminator-only, no method-access-flags lookup since javac/d8 only emits invoke-direct for private targets in non-`<init>` cases)."
+
+[[fixture]]
+name = "OverloadsPeerClasses"
+source = "java/OverloadsPeerClasses/src.java"
+expected_stdout = "java/OverloadsPeerClasses/expected.txt"
+status = "compile_pass"
+notes = "R8 batch-1: symmetric overloads `A.m(B)` + `B.m(A)` between two unrelated classes. Receivers are subclasses (ASub, BSub) but params are the bases. Tests that decompile resolves the method_id by declared param type; confusing the two would cause infinite recursion. Graduated via widen-visibility at `classes.rs::should_widen_private_init_visibility`: when a private nested class has a sibling subclass in the same enclosing top-level, strip `ACC_PRIVATE` from its `<init>` at emit time so the subclass's `super()` recompiles. Tradeoff: emits `<init>` as package-private where the original Java said `private` — recompile-clean but a fidelity loss vs the source. Sidesteps a SUPERSEDURE precedent regression on ShadowedFields (2026-04-30) that the natural this-vs-super fix would have caused. Companion fixes (the ShadowedFields family) are V1.X follow-up (revival trigger = 3 ShadowedFields companions land)."
+
+[[fixture]]
+name = "StaticInterfaceMethod"
+source = "java/StaticInterfaceMethod/src.java"
+expected_stdout = "java/StaticInterfaceMethod/expected.txt"
+status = "compile_pass"
+d8_min_api = 24
+notes = "R8 batch-1: `static` method on a nested interface. d8 rejects this construct at `--min-api < 24` (\"Static interface methods are only supported starting with Android N\"), so the manifest pins `d8_min_api = 24` for native support without desugaring. Tests that the decompiler preserves `static` on an interface method declaration."
+
+[[fixture]]
+name = "BooleanAndNullReturns"
+source = "java/BooleanAndNullReturns/src.java"
+expected_stdout = "java/BooleanAndNullReturns/expected.txt"
+status = "compile_pass"
+notes = "Return-position type inference for const-zero defs. DEX lowers `false`/`null` to `const/4 0; return{,-object}`; without the guard `resolve_one_const` had no Return/ReturnObject arm so the const def stayed typed `Int` and emit rendered `return 0;` for both `boolean`-returning and reference-returning methods. Graduated 2026-04-29 via `dex-emit-return-type-soundness` (step 1: plumb method_idx through `resolve_consts` + add Return/ReturnObject arm)."

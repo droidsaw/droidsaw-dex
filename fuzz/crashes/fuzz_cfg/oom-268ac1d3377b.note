@@ -1,0 +1,17 @@
+stage: cfg (amplification / resource consumption)
+kind: OOM (libFuzzer rss > 2GB default limit)
+site: parse → Cfg::build (no single panic site; allocation blow-up)
+repro: cargo fuzz run fuzz_cfg fuzz/crashes/fuzz_cfg/oom-268ac1d3377b
+size: 113 bytes
+
+Not a panic — libFuzzer killed the process with exit 71 (OOM) during
+the 60s smoke. A 113-byte DEX-shaped input made parse + CFG construction
+allocate past 2GiB. Likely amplification via a header field (method_ids_size,
+class_defs_size, or code_item registers_size) multiplied by per-entry
+allocation.
+
+Filed during dex-hardening's fuzz re-smoke (directive #7). Handed off
+to `dex-hardening-sweep` for root-cause analysis: add size sanity bounds
+at the parser boundary (reject entity counts > data.len() / sizeof(entry)),
+which is the standard defense against DEX amplification. Not in scope
+for dex-hardening.

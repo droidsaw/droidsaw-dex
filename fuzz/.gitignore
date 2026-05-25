@@ -1,0 +1,7 @@
+target
+artifacts
+
+# corpus/ is libFuzzer's runtime working set; mutations are machine-local.
+# The canonical seed set lives under fuzz/seeds/ instead.
+corpus/*/*
+!corpus/*/.gitkeep

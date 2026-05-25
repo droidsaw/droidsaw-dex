@@ -1,0 +1,17 @@
+stage: ssa (amplification / resource consumption)
+kind: OOM (libFuzzer rss > 2GB default limit)
+site: parse → Cfg::build → SsaBody::build (no single panic site)
+repro: cargo fuzz run fuzz_ssa fuzz/crashes/fuzz_ssa/oom-5263e994fb0c
+size: 1841 bytes
+
+Not a panic — libFuzzer killed the process with exit 71 (OOM). Distinct
+from the fuzz_cfg OOM: this one gets past CFG construction and starts
+SSA (Braun name-resolution + phi insertion) before running out of
+memory. Phi node count or worklist entries likely amplify off a very
+tall CFG or pathological join structure.
+
+Filed during dex-hardening's fuzz re-smoke (directive #7). Handed off
+to `dex-hardening-sweep`. Root cause probably shares a common upstream
+fix with the fuzz_cfg OOM: bound block count / per-block worklist size
+at parse. Out of scope for dex-hardening (which is the panic-site
+sweep, not the amplification-defense sweep).

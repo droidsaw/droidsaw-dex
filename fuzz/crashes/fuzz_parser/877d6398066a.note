@@ -1,0 +1,9 @@
+stage: parser
+panic: slice index starts at 12 but ends at 3
+site: src/header.rs:138:50
+repro: cargo fuzz run fuzz_parser fuzz/crashes/fuzz_parser/877d6398066a
+
+Triggered by short / truncated input that gets past the file-length check
+but fails the 12-byte magic-slice read. Caller is `DexFile::parse`.
+Fix: header.rs:138 should .get(..12) and return a typed Err instead of slicing.
+Out of scope for dex-fuzz; hand off to a dex-hardening stream.

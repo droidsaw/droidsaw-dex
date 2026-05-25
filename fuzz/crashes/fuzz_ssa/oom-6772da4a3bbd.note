@@ -1,0 +1,17 @@
+stage: ssa (amplification; gets past parse + CFG, dies in SSA build)
+kind: OOM (libFuzzer rss exceeded 2 GiB default limit)
+site: parse → Cfg::build → SsaBody::build — no single panic location
+repro: cargo fuzz run fuzz_ssa fuzz/crashes/fuzz_ssa/oom-6772da4a3bbd
+size: 2347 bytes
+
+Second fuzz_ssa OOM (distinct from oom-5263e994fb0c, which was 1841
+bytes). Gets further than the prior one — completes CFG construction
+before dying in the Braun name-resolution / phi-insertion phase of
+SSA build. Likely drives phi node count off block count, which is
+itself inflated by the same count-field amplification as the cfg OOMs.
+
+Filed for `dex-hardening-sweep`. Root cause probably shares an
+upstream fix with the three other OOMs: bound parse-time entity
+counts against `data.len()`. A secondary SSA-side defense would be a
+per-method phi-node count cap that rejects obviously pathological
+join structures before allocation.

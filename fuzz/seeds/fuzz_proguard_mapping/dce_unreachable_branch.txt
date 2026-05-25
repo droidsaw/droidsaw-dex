@@ -1,0 +1,10 @@
+# compiler: R8
+# compiler_version: 9.0.32
+# min_api: 24
+# common_typos_disable
+# {"id":"com.android.tools.r8.mapping","version":"2.2"}
+# pg_map_id: 7f1b7f35fefa93ea90ea91f54037ed624646e038664fb73a61ef24572e950108
+# pg_map_hash: SHA-256 7f1b7f35fefa93ea90ea91f54037ed624646e038664fb73a61ef24572e950108
+ConstantCond -> ConstantCond:
+# {"id":"sourceFile","fileName":"ConstantCond.java"}
+    1:3:int compute(int):0:0 -> compute

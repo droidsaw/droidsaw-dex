@@ -1,0 +1,28 @@
+stage: decode (panic-class)
+kind: panic — attempt to add with overflow
+site: src/decode.rs:1038 (parse_class_data direct_methods loop, `method_idx_acc += diff`)
+repro: cargo fuzz run fuzz_cfg fuzz/crashes/fuzz_cfg/panic-437a5b34bb53.bin
+size: 1055 bytes
+
+Surfaced during `dex-resource-limits` 15-minute libFuzzer gate on fuzz_cfg
+(~2.29M runs in, ~6 minutes). `parse_class_data` in src/decode.rs has four
+accumulator loops that decode field_idx_diff / method_idx_diff via ULEB128
+and add them into `field_idx_acc` / `method_idx_acc` using `+=`. When a DEX
+mutant supplies a large uleb delta, the u32 accumulator overflows and Rust
+debug/release-with-overflow-checks aborts the process.
+
+Four sites, all in `parse_class_data`:
+  - src/decode.rs:987 (static_fields: field_idx_acc += diff)
+  - src/decode.rs:1004 (instance_fields: field_idx_acc += diff)
+  - src/decode.rs:1038 (direct_methods: method_idx_acc += diff) ← this crasher
+  - src/decode.rs:1055 (virtual_methods: method_idx_acc += diff)
+
+Fix: convert all four to `checked_add` and return `DexError::InvalidInstruction`
+(or a new `DexError::IdxAccOverflow`). This is panic-class, not amplification;
+per the `dex-resource-limits` brief it is explicitly out-of-scope and belongs
+to `dex-hardening-sweep-2`.
+
+Unblocks: the 15-minute libFuzzer gate on fuzz_cfg + fuzz_ssa without
+`-fork=1`. With amplification bounded, this is the next (and, at least over
+6 minutes, only) panic class sitting between the current state and "fuzz_cfg
+and fuzz_ssa run 15 minutes clean".

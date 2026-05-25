@@ -1,0 +1,82 @@
+// === LEnumWithMethods$Op$1-IA; ===
+// Source: D8$$SyntheticClass
+public final class EnumWithMethods$Op$1_IA {
+}
+
+// === LEnumWithMethods$Op$2-IA; ===
+// Source: D8$$SyntheticClass
+public final class EnumWithMethods$Op$2_IA {
+}
+
+// === LEnumWithMethods$Op-IA; ===
+// Source: D8$$SyntheticClass
+public final class EnumWithMethods$Op_IA {
+}
+
+// === LEnumWithMethods$Op; ===
+// Source: EnumWithMethods.java
+ enum EnumWithMethods$Op {
+    public static final EnumWithMethods$Op ADD;
+    public static final EnumWithMethods$Op SUB;
+
+    private EnumWithMethods$Op(String v1, int v2) {
+    }
+
+    abstract int apply(int p0, int p1);
+
+}
+
+// === LEnumWithMethods; ===
+// Source: EnumWithMethods.java
+public class EnumWithMethods {
+    public EnumWithMethods() {
+        super();
+    }
+
+    public static void main(String[] v3) {
+        java.io.PrintStream v3_1 = java.lang.System.out;
+        EnumWithMethods$Op v0 = EnumWithMethods$Op.ADD;
+        int v0_5 = v0.apply(3, 4);
+        v3_1.println(v0_5);
+        java.io.PrintStream v3_6 = java.lang.System.out;
+        v0 = EnumWithMethods$Op.SUB;
+        int v0_10 = v0.apply(10, 2);
+        v3_6.println(v0_10);
+    }
+
+}
+
+// === LEnumWithMethods$Op$1; ===
+// Source: EnumWithMethods.java
+ enum EnumWithMethods$Op$1 extends EnumWithMethods$Op {
+    private EnumWithMethods$Op$1(String v2, int v3) {
+        super(v2, v3, null);
+    }
+
+     EnumWithMethods$Op$1(String v1, int v2, EnumWithMethods$Op$1_IA v3) {
+        super(v1, v2);
+    }
+
+     int apply(int v1, int v2) {
+        return v1 + v2;
+    }
+
+}
+
+// === LEnumWithMethods$Op$2; ===
+// Source: EnumWithMethods.java
+ enum EnumWithMethods$Op$2 extends EnumWithMethods$Op {
+    private EnumWithMethods$Op$2(String v2, int v3) {
+        super(v2, v3, null);
+    }
+
+     EnumWithMethods$Op$2(String v1, int v2, EnumWithMethods$Op$2_IA v3) {
+        super(v1, v2);
+    }
+
+     int apply(int v1, int v2) {
+        return v1 - v2;
+    }
+
+}
+

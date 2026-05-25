@@ -1,0 +1,52 @@
+# Source-of-truth fingerprint for kotlinc-1.9.22 lowering of `when (sealed-object)`.
+#
+# Sealed root with `object` singletons (not `class` subtypes) lowers to a
+# linear if-chain on `Intrinsics.areEqual` instead of `instanceof`:
+#
+#   per arm:
+#     aload <discriminant>
+#     getstatic <Sub>.INSTANCE:L<Sub>;            ;; singleton field load
+#     invokestatic kotlin/jvm/internal/Intrinsics.areEqual:(LObject;LObject;)Z
+#     ifeq <next-arm-or-default>
+#     <arm body>
+#     goto <return-merge>
+#   default fall-through (same as sealed-class case):
+#     new kotlin/NoWhenBranchMatchedException + dup + invokespecial + athrow
+#
+# This is the MYB.A00 acceptance-probe shape.
+# Note: R8 may rewrite `Intrinsics.areEqual(x, <Sub>.INSTANCE)` to
+# `x.equals(<Sub>.INSTANCE)` post-optimization; the rewritten shape is
+# owned by the R8-corpus track.
+#
+# At 2 arms the recognizer requires `kotlin.Metadata` visibility on the
+# discriminant's static type before firing (false-positive on Java `==`
+# chains is too high otherwise).
+#
+# Recognizer architecture: shape-shared with `when_string/02arms` — both
+# use the linear `Intrinsics.areEqual` chain. Discriminant kind inferred
+# from the second-operand type (`<Sub>.INSTANCE` field load → SealedSubtype;
+# `ldc String` → String).
+#
+# References:
+# - droidsaw-dex/src/signatures/kotlinc19/when_sealed_object.rs.
+
+toolchain = "kotlinc"
+version = "1.9.22"
+construct = "when_sealed_object"
+discriminant_kind = "SealedSubtype"
+outer_form = "linear if-chain on Intrinsics.areEqual(x, <Sub>.INSTANCE)"
+arm_pattern = """
+[
+  Aload($DISCRIM$),
+  Getstatic($SUB_N$.INSTANCE),
+  Invokestatic(Intrinsics.areEqual),
+  Ifeq($NEXT_OR_DEFAULT$),
+  $ARM_BODY$,
+  Goto($RETURN$),
+]
+"""
+recovers = "Stmt::MultiArm { discriminant: Discriminant::SealedSubtype { var, sealed_root }, arms: [(ArmPattern::SealedTypeIs($SUB$), $BODY$), ...], default: None /* Kotlin exhaustiveness via athrow */, provenance: Provenance { source_dialect: SourceDialect::Kotlin(KotlinVersion::V19), ... } }"
+
+[version_pin]
+kotlinc = "1.9.22"
+d8 = "AGP 8.x"

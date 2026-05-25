@@ -1,0 +1,819 @@
+# compiler: R8
+# compiler_version: 9.0.32
+# min_api: 1
+# common_typos_disable
+# {"id":"com.android.tools.r8.mapping","version":"2.2"}
+# pg_map_id: 8c24614427ff0ee4ca9ada661e73fda5121e63ee58025ab9a5ef9b7619f230a5
+# pg_map_hash: SHA-256 8c24614427ff0ee4ca9ada661e73fda5121e63ee58025ab9a5ef9b7619f230a5
+fox.droidsaw.r8fixture.GroupAInt -> fox.droidsaw.r8fixture.GroupAInt:
+# {"id":"sourceFile","fileName":"Main.kt"}
+    1:4:java.lang.String a01(int):28:28 -> a01
+    5:9:java.lang.String a01(int):0:0 -> a01
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a01(int):28:28 -> a01
+    12:12:java.lang.String a01(int):28:28 -> a01
+    15:15:java.lang.String a01(int):28:28 -> a01
+    19:19:java.lang.String a01(int):28:28 -> a01
+    24:24:java.lang.String a01(int):28:28 -> a01
+    1:4:java.lang.String a02(int):29:29 -> a02
+    5:9:java.lang.String a02(int):0:0 -> a02
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a02(int):29:29 -> a02
+    12:12:java.lang.String a02(int):29:29 -> a02
+    15:15:java.lang.String a02(int):29:29 -> a02
+    19:19:java.lang.String a02(int):29:29 -> a02
+    24:24:java.lang.String a02(int):29:29 -> a02
+    1:4:java.lang.String a03(int):30:30 -> a03
+    5:9:java.lang.String a03(int):0:0 -> a03
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a03(int):30:30 -> a03
+    12:12:java.lang.String a03(int):30:30 -> a03
+    15:15:java.lang.String a03(int):30:30 -> a03
+    19:19:java.lang.String a03(int):30:30 -> a03
+    24:24:java.lang.String a03(int):30:30 -> a03
+    1:4:java.lang.String a04(int):31:31 -> a04
+    5:9:java.lang.String a04(int):0:0 -> a04
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a04(int):31:31 -> a04
+    12:12:java.lang.String a04(int):31:31 -> a04
+    15:15:java.lang.String a04(int):31:31 -> a04
+    19:19:java.lang.String a04(int):31:31 -> a04
+    24:24:java.lang.String a04(int):31:31 -> a04
+    1:4:java.lang.String a05(int):32:32 -> a05
+    5:9:java.lang.String a05(int):0:0 -> a05
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a05(int):32:32 -> a05
+    12:12:java.lang.String a05(int):32:32 -> a05
+    15:15:java.lang.String a05(int):32:32 -> a05
+    19:19:java.lang.String a05(int):32:32 -> a05
+    24:24:java.lang.String a05(int):32:32 -> a05
+    1:4:java.lang.String a06(int):33:33 -> a06
+    5:9:java.lang.String a06(int):0:0 -> a06
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a06(int):33:33 -> a06
+    12:12:java.lang.String a06(int):33:33 -> a06
+    15:15:java.lang.String a06(int):33:33 -> a06
+    19:19:java.lang.String a06(int):33:33 -> a06
+    24:24:java.lang.String a06(int):33:33 -> a06
+    1:4:java.lang.String a07(int):34:34 -> a07
+    5:9:java.lang.String a07(int):0:0 -> a07
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a07(int):34:34 -> a07
+    12:12:java.lang.String a07(int):34:34 -> a07
+    15:15:java.lang.String a07(int):34:34 -> a07
+    19:19:java.lang.String a07(int):34:34 -> a07
+    24:24:java.lang.String a07(int):34:34 -> a07
+    1:4:java.lang.String a08(int):35:35 -> a08
+    5:9:java.lang.String a08(int):0:0 -> a08
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a08(int):35:35 -> a08
+    12:12:java.lang.String a08(int):35:35 -> a08
+    15:15:java.lang.String a08(int):35:35 -> a08
+    19:19:java.lang.String a08(int):35:35 -> a08
+    24:24:java.lang.String a08(int):35:35 -> a08
+    1:4:java.lang.String a09(int):36:36 -> a09
+    5:9:java.lang.String a09(int):0:0 -> a09
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a09(int):36:36 -> a09
+    12:12:java.lang.String a09(int):36:36 -> a09
+    15:15:java.lang.String a09(int):36:36 -> a09
+    19:19:java.lang.String a09(int):36:36 -> a09
+    24:24:java.lang.String a09(int):36:36 -> a09
+    1:4:java.lang.String a10(int):37:37 -> a10
+    5:9:java.lang.String a10(int):0:0 -> a10
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a10(int):37:37 -> a10
+    12:12:java.lang.String a10(int):37:37 -> a10
+    15:15:java.lang.String a10(int):37:37 -> a10
+    19:19:java.lang.String a10(int):37:37 -> a10
+    24:24:java.lang.String a10(int):37:37 -> a10
+    1:4:java.lang.String a11(int):38:38 -> a11
+    5:9:java.lang.String a11(int):0:0 -> a11
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a11(int):38:38 -> a11
+    12:12:java.lang.String a11(int):38:38 -> a11
+    15:15:java.lang.String a11(int):38:38 -> a11
+    19:19:java.lang.String a11(int):38:38 -> a11
+    24:24:java.lang.String a11(int):38:38 -> a11
+    1:4:java.lang.String a12(int):39:39 -> a12
+    5:9:java.lang.String a12(int):0:0 -> a12
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a12(int):39:39 -> a12
+    12:12:java.lang.String a12(int):39:39 -> a12
+    15:15:java.lang.String a12(int):39:39 -> a12
+    19:19:java.lang.String a12(int):39:39 -> a12
+    24:24:java.lang.String a12(int):39:39 -> a12
+    1:4:java.lang.String a13(int):40:40 -> a13
+    5:9:java.lang.String a13(int):0:0 -> a13
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a13(int):40:40 -> a13
+    12:12:java.lang.String a13(int):40:40 -> a13
+    15:15:java.lang.String a13(int):40:40 -> a13
+    19:19:java.lang.String a13(int):40:40 -> a13
+    24:24:java.lang.String a13(int):40:40 -> a13
+    1:4:java.lang.String a14(int):41:41 -> a14
+    5:9:java.lang.String a14(int):0:0 -> a14
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a14(int):41:41 -> a14
+    12:12:java.lang.String a14(int):41:41 -> a14
+    15:15:java.lang.String a14(int):41:41 -> a14
+    19:19:java.lang.String a14(int):41:41 -> a14
+    24:24:java.lang.String a14(int):41:41 -> a14
+    1:4:java.lang.String a15(int):42:42 -> a15
+    5:9:java.lang.String a15(int):0:0 -> a15
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a15(int):42:42 -> a15
+    12:12:java.lang.String a15(int):42:42 -> a15
+    15:15:java.lang.String a15(int):42:42 -> a15
+    19:19:java.lang.String a15(int):42:42 -> a15
+    24:24:java.lang.String a15(int):42:42 -> a15
+    1:4:java.lang.String a16(int):43:43 -> a16
+    5:9:java.lang.String a16(int):0:0 -> a16
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a16(int):43:43 -> a16
+    12:12:java.lang.String a16(int):43:43 -> a16
+    15:15:java.lang.String a16(int):43:43 -> a16
+    19:19:java.lang.String a16(int):43:43 -> a16
+    24:24:java.lang.String a16(int):43:43 -> a16
+    1:4:java.lang.String a17(int):44:44 -> a17
+    5:9:java.lang.String a17(int):0:0 -> a17
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a17(int):44:44 -> a17
+    12:12:java.lang.String a17(int):44:44 -> a17
+    15:15:java.lang.String a17(int):44:44 -> a17
+    19:19:java.lang.String a17(int):44:44 -> a17
+    24:24:java.lang.String a17(int):44:44 -> a17
+    1:4:java.lang.String a18(int):45:45 -> a18
+    5:9:java.lang.String a18(int):0:0 -> a18
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a18(int):45:45 -> a18
+    12:12:java.lang.String a18(int):45:45 -> a18
+    15:15:java.lang.String a18(int):45:45 -> a18
+    19:19:java.lang.String a18(int):45:45 -> a18
+    24:24:java.lang.String a18(int):45:45 -> a18
+    1:4:java.lang.String a19(int):46:46 -> a19
+    5:9:java.lang.String a19(int):0:0 -> a19
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a19(int):46:46 -> a19
+    12:12:java.lang.String a19(int):46:46 -> a19
+    15:15:java.lang.String a19(int):46:46 -> a19
+    19:19:java.lang.String a19(int):46:46 -> a19
+    24:24:java.lang.String a19(int):46:46 -> a19
+    1:4:java.lang.String a20(int):47:47 -> a20
+    5:9:java.lang.String a20(int):0:0 -> a20
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a20(int):47:47 -> a20
+    12:12:java.lang.String a20(int):47:47 -> a20
+    15:15:java.lang.String a20(int):47:47 -> a20
+    19:19:java.lang.String a20(int):47:47 -> a20
+    24:24:java.lang.String a20(int):47:47 -> a20
+    1:4:java.lang.String a21(int):48:48 -> a21
+    5:9:java.lang.String a21(int):0:0 -> a21
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a21(int):48:48 -> a21
+    12:12:java.lang.String a21(int):48:48 -> a21
+    15:15:java.lang.String a21(int):48:48 -> a21
+    19:19:java.lang.String a21(int):48:48 -> a21
+    24:24:java.lang.String a21(int):48:48 -> a21
+    1:4:java.lang.String a22(int):49:49 -> a22
+    5:9:java.lang.String a22(int):0:0 -> a22
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a22(int):49:49 -> a22
+    12:12:java.lang.String a22(int):49:49 -> a22
+    15:15:java.lang.String a22(int):49:49 -> a22
+    19:19:java.lang.String a22(int):49:49 -> a22
+    24:24:java.lang.String a22(int):49:49 -> a22
+    1:4:java.lang.String a23(int):50:50 -> a23
+    5:9:java.lang.String a23(int):0:0 -> a23
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a23(int):50:50 -> a23
+    12:12:java.lang.String a23(int):50:50 -> a23
+    15:15:java.lang.String a23(int):50:50 -> a23
+    19:19:java.lang.String a23(int):50:50 -> a23
+    24:24:java.lang.String a23(int):50:50 -> a23
+    1:4:java.lang.String a24(int):51:51 -> a24
+    5:9:java.lang.String a24(int):0:0 -> a24
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a24(int):51:51 -> a24
+    12:12:java.lang.String a24(int):51:51 -> a24
+    15:15:java.lang.String a24(int):51:51 -> a24
+    19:19:java.lang.String a24(int):51:51 -> a24
+    24:24:java.lang.String a24(int):51:51 -> a24
+    1:4:java.lang.String a25(int):52:52 -> a25
+    5:9:java.lang.String a25(int):0:0 -> a25
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a25(int):52:52 -> a25
+    12:12:java.lang.String a25(int):52:52 -> a25
+    15:15:java.lang.String a25(int):52:52 -> a25
+    19:19:java.lang.String a25(int):52:52 -> a25
+    24:24:java.lang.String a25(int):52:52 -> a25
+    1:4:java.lang.String a26(int):53:53 -> a26
+    5:9:java.lang.String a26(int):0:0 -> a26
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a26(int):53:53 -> a26
+    12:12:java.lang.String a26(int):53:53 -> a26
+    15:15:java.lang.String a26(int):53:53 -> a26
+    19:19:java.lang.String a26(int):53:53 -> a26
+    24:24:java.lang.String a26(int):53:53 -> a26
+    1:4:java.lang.String a27(int):54:54 -> a27
+    5:9:java.lang.String a27(int):0:0 -> a27
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a27(int):54:54 -> a27
+    12:12:java.lang.String a27(int):54:54 -> a27
+    15:15:java.lang.String a27(int):54:54 -> a27
+    19:19:java.lang.String a27(int):54:54 -> a27
+    24:24:java.lang.String a27(int):54:54 -> a27
+    1:4:java.lang.String a28(int):55:55 -> a28
+    5:9:java.lang.String a28(int):0:0 -> a28
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a28(int):55:55 -> a28
+    12:12:java.lang.String a28(int):55:55 -> a28
+    15:15:java.lang.String a28(int):55:55 -> a28
+    19:19:java.lang.String a28(int):55:55 -> a28
+    24:24:java.lang.String a28(int):55:55 -> a28
+    1:4:java.lang.String a29(int):56:56 -> a29
+    5:9:java.lang.String a29(int):0:0 -> a29
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a29(int):56:56 -> a29
+    12:12:java.lang.String a29(int):56:56 -> a29
+    15:15:java.lang.String a29(int):56:56 -> a29
+    19:19:java.lang.String a29(int):56:56 -> a29
+    24:24:java.lang.String a29(int):56:56 -> a29
+    1:4:java.lang.String a30(int):57:57 -> a30
+    5:9:java.lang.String a30(int):0:0 -> a30
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;a(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String a30(int):57:57 -> a30
+    12:12:java.lang.String a30(int):57:57 -> a30
+    15:15:java.lang.String a30(int):57:57 -> a30
+    19:19:java.lang.String a30(int):57:57 -> a30
+    24:24:java.lang.String a30(int):57:57 -> a30
+fox.droidsaw.r8fixture.GroupAInt$0 -> a.a:
+# {"id":"sourceFile","fileName":"R8$$SyntheticClass"}
+# {"id":"com.android.tools.r8.synthesized"}
+    1:2:java.lang.String a.GroupAInt$0.m(java.lang.String,int,java.lang.String):0:0 -> a
+      # {"id":"com.android.tools.r8.synthesized"}
+      # {"id":"com.android.tools.r8.outline"}
+    3:5:java.lang.String a.GroupAInt$0.m(java.lang.String,int,java.lang.String):1:1 -> a
+    6:8:java.lang.String a.GroupAInt$0.m(java.lang.String,int,java.lang.String):2:2 -> a
+    9:11:java.lang.String a.GroupAInt$0.m(java.lang.String,int,java.lang.String):3:3 -> a
+    12:16:java.lang.String a.GroupAInt$0.m(java.lang.String,int,java.lang.String):4:4 -> a
+    1:2:java.lang.String a.GroupAInt$0.m(java.lang.String,long,java.lang.String):0:0 -> b
+      # {"id":"com.android.tools.r8.synthesized"}
+      # {"id":"com.android.tools.r8.outline"}
+    3:5:java.lang.String a.GroupAInt$0.m(java.lang.String,long,java.lang.String):1:1 -> b
+    6:8:java.lang.String a.GroupAInt$0.m(java.lang.String,long,java.lang.String):2:2 -> b
+    9:11:java.lang.String a.GroupAInt$0.m(java.lang.String,long,java.lang.String):3:3 -> b
+    12:16:java.lang.String a.GroupAInt$0.m(java.lang.String,long,java.lang.String):4:4 -> b
+    1:6:java.lang.String a.GroupAInt$0.m(java.lang.String,java.lang.String,java.lang.String,java.lang.String):0:5 -> c
+      # {"id":"com.android.tools.r8.synthesized"}
+      # {"id":"com.android.tools.r8.outline"}
+fox.droidsaw.r8fixture.GroupBLong -> fox.droidsaw.r8fixture.GroupBLong:
+# {"id":"sourceFile","fileName":"Main.kt"}
+    1:4:java.lang.String b01(long):61:61 -> b01
+    5:9:java.lang.String b01(long):0:0 -> b01
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b01(long):61:61 -> b01
+    12:12:java.lang.String b01(long):61:61 -> b01
+    15:15:java.lang.String b01(long):61:61 -> b01
+    19:19:java.lang.String b01(long):61:61 -> b01
+    24:24:java.lang.String b01(long):61:61 -> b01
+    1:4:java.lang.String b02(long):62:62 -> b02
+    5:9:java.lang.String b02(long):0:0 -> b02
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b02(long):62:62 -> b02
+    12:12:java.lang.String b02(long):62:62 -> b02
+    15:15:java.lang.String b02(long):62:62 -> b02
+    19:19:java.lang.String b02(long):62:62 -> b02
+    24:24:java.lang.String b02(long):62:62 -> b02
+    1:4:java.lang.String b03(long):63:63 -> b03
+    5:9:java.lang.String b03(long):0:0 -> b03
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b03(long):63:63 -> b03
+    12:12:java.lang.String b03(long):63:63 -> b03
+    15:15:java.lang.String b03(long):63:63 -> b03
+    19:19:java.lang.String b03(long):63:63 -> b03
+    24:24:java.lang.String b03(long):63:63 -> b03
+    1:4:java.lang.String b04(long):64:64 -> b04
+    5:9:java.lang.String b04(long):0:0 -> b04
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b04(long):64:64 -> b04
+    12:12:java.lang.String b04(long):64:64 -> b04
+    15:15:java.lang.String b04(long):64:64 -> b04
+    19:19:java.lang.String b04(long):64:64 -> b04
+    24:24:java.lang.String b04(long):64:64 -> b04
+    1:4:java.lang.String b05(long):65:65 -> b05
+    5:9:java.lang.String b05(long):0:0 -> b05
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b05(long):65:65 -> b05
+    12:12:java.lang.String b05(long):65:65 -> b05
+    15:15:java.lang.String b05(long):65:65 -> b05
+    19:19:java.lang.String b05(long):65:65 -> b05
+    24:24:java.lang.String b05(long):65:65 -> b05
+    1:4:java.lang.String b06(long):66:66 -> b06
+    5:9:java.lang.String b06(long):0:0 -> b06
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b06(long):66:66 -> b06
+    12:12:java.lang.String b06(long):66:66 -> b06
+    15:15:java.lang.String b06(long):66:66 -> b06
+    19:19:java.lang.String b06(long):66:66 -> b06
+    24:24:java.lang.String b06(long):66:66 -> b06
+    1:4:java.lang.String b07(long):67:67 -> b07
+    5:9:java.lang.String b07(long):0:0 -> b07
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b07(long):67:67 -> b07
+    12:12:java.lang.String b07(long):67:67 -> b07
+    15:15:java.lang.String b07(long):67:67 -> b07
+    19:19:java.lang.String b07(long):67:67 -> b07
+    24:24:java.lang.String b07(long):67:67 -> b07
+    1:4:java.lang.String b08(long):68:68 -> b08
+    5:9:java.lang.String b08(long):0:0 -> b08
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b08(long):68:68 -> b08
+    12:12:java.lang.String b08(long):68:68 -> b08
+    15:15:java.lang.String b08(long):68:68 -> b08
+    19:19:java.lang.String b08(long):68:68 -> b08
+    24:24:java.lang.String b08(long):68:68 -> b08
+    1:4:java.lang.String b09(long):69:69 -> b09
+    5:9:java.lang.String b09(long):0:0 -> b09
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b09(long):69:69 -> b09
+    12:12:java.lang.String b09(long):69:69 -> b09
+    15:15:java.lang.String b09(long):69:69 -> b09
+    19:19:java.lang.String b09(long):69:69 -> b09
+    24:24:java.lang.String b09(long):69:69 -> b09
+    1:4:java.lang.String b10(long):70:70 -> b10
+    5:9:java.lang.String b10(long):0:0 -> b10
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b10(long):70:70 -> b10
+    12:12:java.lang.String b10(long):70:70 -> b10
+    15:15:java.lang.String b10(long):70:70 -> b10
+    19:19:java.lang.String b10(long):70:70 -> b10
+    24:24:java.lang.String b10(long):70:70 -> b10
+    1:4:java.lang.String b11(long):71:71 -> b11
+    5:9:java.lang.String b11(long):0:0 -> b11
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b11(long):71:71 -> b11
+    12:12:java.lang.String b11(long):71:71 -> b11
+    15:15:java.lang.String b11(long):71:71 -> b11
+    19:19:java.lang.String b11(long):71:71 -> b11
+    24:24:java.lang.String b11(long):71:71 -> b11
+    1:4:java.lang.String b12(long):72:72 -> b12
+    5:9:java.lang.String b12(long):0:0 -> b12
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b12(long):72:72 -> b12
+    12:12:java.lang.String b12(long):72:72 -> b12
+    15:15:java.lang.String b12(long):72:72 -> b12
+    19:19:java.lang.String b12(long):72:72 -> b12
+    24:24:java.lang.String b12(long):72:72 -> b12
+    1:4:java.lang.String b13(long):73:73 -> b13
+    5:9:java.lang.String b13(long):0:0 -> b13
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b13(long):73:73 -> b13
+    12:12:java.lang.String b13(long):73:73 -> b13
+    15:15:java.lang.String b13(long):73:73 -> b13
+    19:19:java.lang.String b13(long):73:73 -> b13
+    24:24:java.lang.String b13(long):73:73 -> b13
+    1:4:java.lang.String b14(long):74:74 -> b14
+    5:9:java.lang.String b14(long):0:0 -> b14
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b14(long):74:74 -> b14
+    12:12:java.lang.String b14(long):74:74 -> b14
+    15:15:java.lang.String b14(long):74:74 -> b14
+    19:19:java.lang.String b14(long):74:74 -> b14
+    24:24:java.lang.String b14(long):74:74 -> b14
+    1:4:java.lang.String b15(long):75:75 -> b15
+    5:9:java.lang.String b15(long):0:0 -> b15
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b15(long):75:75 -> b15
+    12:12:java.lang.String b15(long):75:75 -> b15
+    15:15:java.lang.String b15(long):75:75 -> b15
+    19:19:java.lang.String b15(long):75:75 -> b15
+    24:24:java.lang.String b15(long):75:75 -> b15
+    1:4:java.lang.String b16(long):76:76 -> b16
+    5:9:java.lang.String b16(long):0:0 -> b16
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b16(long):76:76 -> b16
+    12:12:java.lang.String b16(long):76:76 -> b16
+    15:15:java.lang.String b16(long):76:76 -> b16
+    19:19:java.lang.String b16(long):76:76 -> b16
+    24:24:java.lang.String b16(long):76:76 -> b16
+    1:4:java.lang.String b17(long):77:77 -> b17
+    5:9:java.lang.String b17(long):0:0 -> b17
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b17(long):77:77 -> b17
+    12:12:java.lang.String b17(long):77:77 -> b17
+    15:15:java.lang.String b17(long):77:77 -> b17
+    19:19:java.lang.String b17(long):77:77 -> b17
+    24:24:java.lang.String b17(long):77:77 -> b17
+    1:4:java.lang.String b18(long):78:78 -> b18
+    5:9:java.lang.String b18(long):0:0 -> b18
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b18(long):78:78 -> b18
+    12:12:java.lang.String b18(long):78:78 -> b18
+    15:15:java.lang.String b18(long):78:78 -> b18
+    19:19:java.lang.String b18(long):78:78 -> b18
+    24:24:java.lang.String b18(long):78:78 -> b18
+    1:4:java.lang.String b19(long):79:79 -> b19
+    5:9:java.lang.String b19(long):0:0 -> b19
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b19(long):79:79 -> b19
+    12:12:java.lang.String b19(long):79:79 -> b19
+    15:15:java.lang.String b19(long):79:79 -> b19
+    19:19:java.lang.String b19(long):79:79 -> b19
+    24:24:java.lang.String b19(long):79:79 -> b19
+    1:4:java.lang.String b20(long):80:80 -> b20
+    5:9:java.lang.String b20(long):0:0 -> b20
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b20(long):80:80 -> b20
+    12:12:java.lang.String b20(long):80:80 -> b20
+    15:15:java.lang.String b20(long):80:80 -> b20
+    19:19:java.lang.String b20(long):80:80 -> b20
+    24:24:java.lang.String b20(long):80:80 -> b20
+    1:4:java.lang.String b21(long):81:81 -> b21
+    5:9:java.lang.String b21(long):0:0 -> b21
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b21(long):81:81 -> b21
+    12:12:java.lang.String b21(long):81:81 -> b21
+    15:15:java.lang.String b21(long):81:81 -> b21
+    19:19:java.lang.String b21(long):81:81 -> b21
+    24:24:java.lang.String b21(long):81:81 -> b21
+    1:4:java.lang.String b22(long):82:82 -> b22
+    5:9:java.lang.String b22(long):0:0 -> b22
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b22(long):82:82 -> b22
+    12:12:java.lang.String b22(long):82:82 -> b22
+    15:15:java.lang.String b22(long):82:82 -> b22
+    19:19:java.lang.String b22(long):82:82 -> b22
+    24:24:java.lang.String b22(long):82:82 -> b22
+    1:4:java.lang.String b23(long):83:83 -> b23
+    5:9:java.lang.String b23(long):0:0 -> b23
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b23(long):83:83 -> b23
+    12:12:java.lang.String b23(long):83:83 -> b23
+    15:15:java.lang.String b23(long):83:83 -> b23
+    19:19:java.lang.String b23(long):83:83 -> b23
+    24:24:java.lang.String b23(long):83:83 -> b23
+    1:4:java.lang.String b24(long):84:84 -> b24
+    5:9:java.lang.String b24(long):0:0 -> b24
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b24(long):84:84 -> b24
+    12:12:java.lang.String b24(long):84:84 -> b24
+    15:15:java.lang.String b24(long):84:84 -> b24
+    19:19:java.lang.String b24(long):84:84 -> b24
+    24:24:java.lang.String b24(long):84:84 -> b24
+    1:4:java.lang.String b25(long):85:85 -> b25
+    5:9:java.lang.String b25(long):0:0 -> b25
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b25(long):85:85 -> b25
+    12:12:java.lang.String b25(long):85:85 -> b25
+    15:15:java.lang.String b25(long):85:85 -> b25
+    19:19:java.lang.String b25(long):85:85 -> b25
+    24:24:java.lang.String b25(long):85:85 -> b25
+    1:4:java.lang.String b26(long):86:86 -> b26
+    5:9:java.lang.String b26(long):0:0 -> b26
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b26(long):86:86 -> b26
+    12:12:java.lang.String b26(long):86:86 -> b26
+    15:15:java.lang.String b26(long):86:86 -> b26
+    19:19:java.lang.String b26(long):86:86 -> b26
+    24:24:java.lang.String b26(long):86:86 -> b26
+    1:4:java.lang.String b27(long):87:87 -> b27
+    5:9:java.lang.String b27(long):0:0 -> b27
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b27(long):87:87 -> b27
+    12:12:java.lang.String b27(long):87:87 -> b27
+    15:15:java.lang.String b27(long):87:87 -> b27
+    19:19:java.lang.String b27(long):87:87 -> b27
+    24:24:java.lang.String b27(long):87:87 -> b27
+    1:4:java.lang.String b28(long):88:88 -> b28
+    5:9:java.lang.String b28(long):0:0 -> b28
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b28(long):88:88 -> b28
+    12:12:java.lang.String b28(long):88:88 -> b28
+    15:15:java.lang.String b28(long):88:88 -> b28
+    19:19:java.lang.String b28(long):88:88 -> b28
+    24:24:java.lang.String b28(long):88:88 -> b28
+    1:4:java.lang.String b29(long):89:89 -> b29
+    5:9:java.lang.String b29(long):0:0 -> b29
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b29(long):89:89 -> b29
+    12:12:java.lang.String b29(long):89:89 -> b29
+    15:15:java.lang.String b29(long):89:89 -> b29
+    19:19:java.lang.String b29(long):89:89 -> b29
+    24:24:java.lang.String b29(long):89:89 -> b29
+    1:4:java.lang.String b30(long):90:90 -> b30
+    5:9:java.lang.String b30(long):0:0 -> b30
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"3":12,"6":15,"9":19,"12":24},"outline":"La/a;b(Ljava/lang/String;JLjava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String b30(long):90:90 -> b30
+    12:12:java.lang.String b30(long):90:90 -> b30
+    15:15:java.lang.String b30(long):90:90 -> b30
+    19:19:java.lang.String b30(long):90:90 -> b30
+    24:24:java.lang.String b30(long):90:90 -> b30
+fox.droidsaw.r8fixture.GroupCStr -> fox.droidsaw.r8fixture.GroupCStr:
+# {"id":"sourceFile","fileName":"Main.kt"}
+    1:4:java.lang.String c01(java.lang.String):94:94 -> c01
+    5:9:java.lang.String c01(java.lang.String):0:0 -> c01
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c01(java.lang.String):0:0 -> c01
+    12:12:java.lang.String c01(java.lang.String):94:94 -> c01
+    15:15:java.lang.String c01(java.lang.String):94:94 -> c01
+    19:19:java.lang.String c01(java.lang.String):94:94 -> c01
+    24:24:java.lang.String c01(java.lang.String):94:94 -> c01
+    30:30:java.lang.String c01(java.lang.String):94:94 -> c01
+    1:4:java.lang.String c02(java.lang.String):95:95 -> c02
+    5:9:java.lang.String c02(java.lang.String):0:0 -> c02
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c02(java.lang.String):0:0 -> c02
+    12:12:java.lang.String c02(java.lang.String):95:95 -> c02
+    15:15:java.lang.String c02(java.lang.String):95:95 -> c02
+    19:19:java.lang.String c02(java.lang.String):95:95 -> c02
+    24:24:java.lang.String c02(java.lang.String):95:95 -> c02
+    30:30:java.lang.String c02(java.lang.String):95:95 -> c02
+    1:4:java.lang.String c03(java.lang.String):96:96 -> c03
+    5:9:java.lang.String c03(java.lang.String):0:0 -> c03
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c03(java.lang.String):0:0 -> c03
+    12:12:java.lang.String c03(java.lang.String):96:96 -> c03
+    15:15:java.lang.String c03(java.lang.String):96:96 -> c03
+    19:19:java.lang.String c03(java.lang.String):96:96 -> c03
+    24:24:java.lang.String c03(java.lang.String):96:96 -> c03
+    30:30:java.lang.String c03(java.lang.String):96:96 -> c03
+    1:4:java.lang.String c04(java.lang.String):97:97 -> c04
+    5:9:java.lang.String c04(java.lang.String):0:0 -> c04
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c04(java.lang.String):0:0 -> c04
+    12:12:java.lang.String c04(java.lang.String):97:97 -> c04
+    15:15:java.lang.String c04(java.lang.String):97:97 -> c04
+    19:19:java.lang.String c04(java.lang.String):97:97 -> c04
+    24:24:java.lang.String c04(java.lang.String):97:97 -> c04
+    30:30:java.lang.String c04(java.lang.String):97:97 -> c04
+    1:4:java.lang.String c05(java.lang.String):98:98 -> c05
+    5:9:java.lang.String c05(java.lang.String):0:0 -> c05
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c05(java.lang.String):0:0 -> c05
+    12:12:java.lang.String c05(java.lang.String):98:98 -> c05
+    15:15:java.lang.String c05(java.lang.String):98:98 -> c05
+    19:19:java.lang.String c05(java.lang.String):98:98 -> c05
+    24:24:java.lang.String c05(java.lang.String):98:98 -> c05
+    30:30:java.lang.String c05(java.lang.String):98:98 -> c05
+    1:4:java.lang.String c06(java.lang.String):99:99 -> c06
+    5:9:java.lang.String c06(java.lang.String):0:0 -> c06
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c06(java.lang.String):0:0 -> c06
+    12:12:java.lang.String c06(java.lang.String):99:99 -> c06
+    15:15:java.lang.String c06(java.lang.String):99:99 -> c06
+    19:19:java.lang.String c06(java.lang.String):99:99 -> c06
+    24:24:java.lang.String c06(java.lang.String):99:99 -> c06
+    30:30:java.lang.String c06(java.lang.String):99:99 -> c06
+    1:4:java.lang.String c07(java.lang.String):100:100 -> c07
+    5:9:java.lang.String c07(java.lang.String):0:0 -> c07
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c07(java.lang.String):0:0 -> c07
+    12:12:java.lang.String c07(java.lang.String):100:100 -> c07
+    15:15:java.lang.String c07(java.lang.String):100:100 -> c07
+    19:19:java.lang.String c07(java.lang.String):100:100 -> c07
+    24:24:java.lang.String c07(java.lang.String):100:100 -> c07
+    30:30:java.lang.String c07(java.lang.String):100:100 -> c07
+    1:4:java.lang.String c08(java.lang.String):101:101 -> c08
+    5:9:java.lang.String c08(java.lang.String):0:0 -> c08
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c08(java.lang.String):0:0 -> c08
+    12:12:java.lang.String c08(java.lang.String):101:101 -> c08
+    15:15:java.lang.String c08(java.lang.String):101:101 -> c08
+    19:19:java.lang.String c08(java.lang.String):101:101 -> c08
+    24:24:java.lang.String c08(java.lang.String):101:101 -> c08
+    30:30:java.lang.String c08(java.lang.String):101:101 -> c08
+    1:4:java.lang.String c09(java.lang.String):102:102 -> c09
+    5:9:java.lang.String c09(java.lang.String):0:0 -> c09
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c09(java.lang.String):0:0 -> c09
+    12:12:java.lang.String c09(java.lang.String):102:102 -> c09
+    15:15:java.lang.String c09(java.lang.String):102:102 -> c09
+    19:19:java.lang.String c09(java.lang.String):102:102 -> c09
+    24:24:java.lang.String c09(java.lang.String):102:102 -> c09
+    30:30:java.lang.String c09(java.lang.String):102:102 -> c09
+    1:4:java.lang.String c10(java.lang.String):103:103 -> c10
+    5:9:java.lang.String c10(java.lang.String):0:0 -> c10
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c10(java.lang.String):0:0 -> c10
+    12:12:java.lang.String c10(java.lang.String):103:103 -> c10
+    15:15:java.lang.String c10(java.lang.String):103:103 -> c10
+    19:19:java.lang.String c10(java.lang.String):103:103 -> c10
+    24:24:java.lang.String c10(java.lang.String):103:103 -> c10
+    30:30:java.lang.String c10(java.lang.String):103:103 -> c10
+    1:4:java.lang.String c11(java.lang.String):104:104 -> c11
+    5:9:java.lang.String c11(java.lang.String):0:0 -> c11
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c11(java.lang.String):0:0 -> c11
+    12:12:java.lang.String c11(java.lang.String):104:104 -> c11
+    15:15:java.lang.String c11(java.lang.String):104:104 -> c11
+    19:19:java.lang.String c11(java.lang.String):104:104 -> c11
+    24:24:java.lang.String c11(java.lang.String):104:104 -> c11
+    30:30:java.lang.String c11(java.lang.String):104:104 -> c11
+    1:4:java.lang.String c12(java.lang.String):105:105 -> c12
+    5:9:java.lang.String c12(java.lang.String):0:0 -> c12
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c12(java.lang.String):0:0 -> c12
+    12:12:java.lang.String c12(java.lang.String):105:105 -> c12
+    15:15:java.lang.String c12(java.lang.String):105:105 -> c12
+    19:19:java.lang.String c12(java.lang.String):105:105 -> c12
+    24:24:java.lang.String c12(java.lang.String):105:105 -> c12
+    30:30:java.lang.String c12(java.lang.String):105:105 -> c12
+    1:4:java.lang.String c13(java.lang.String):106:106 -> c13
+    5:9:java.lang.String c13(java.lang.String):0:0 -> c13
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c13(java.lang.String):0:0 -> c13
+    12:12:java.lang.String c13(java.lang.String):106:106 -> c13
+    15:15:java.lang.String c13(java.lang.String):106:106 -> c13
+    19:19:java.lang.String c13(java.lang.String):106:106 -> c13
+    24:24:java.lang.String c13(java.lang.String):106:106 -> c13
+    30:30:java.lang.String c13(java.lang.String):106:106 -> c13
+    1:4:java.lang.String c14(java.lang.String):107:107 -> c14
+    5:9:java.lang.String c14(java.lang.String):0:0 -> c14
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c14(java.lang.String):0:0 -> c14
+    12:12:java.lang.String c14(java.lang.String):107:107 -> c14
+    15:15:java.lang.String c14(java.lang.String):107:107 -> c14
+    19:19:java.lang.String c14(java.lang.String):107:107 -> c14
+    24:24:java.lang.String c14(java.lang.String):107:107 -> c14
+    30:30:java.lang.String c14(java.lang.String):107:107 -> c14
+    1:4:java.lang.String c15(java.lang.String):108:108 -> c15
+    5:9:java.lang.String c15(java.lang.String):0:0 -> c15
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c15(java.lang.String):0:0 -> c15
+    12:12:java.lang.String c15(java.lang.String):108:108 -> c15
+    15:15:java.lang.String c15(java.lang.String):108:108 -> c15
+    19:19:java.lang.String c15(java.lang.String):108:108 -> c15
+    24:24:java.lang.String c15(java.lang.String):108:108 -> c15
+    30:30:java.lang.String c15(java.lang.String):108:108 -> c15
+    1:4:java.lang.String c16(java.lang.String):109:109 -> c16
+    5:9:java.lang.String c16(java.lang.String):0:0 -> c16
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c16(java.lang.String):0:0 -> c16
+    12:12:java.lang.String c16(java.lang.String):109:109 -> c16
+    15:15:java.lang.String c16(java.lang.String):109:109 -> c16
+    19:19:java.lang.String c16(java.lang.String):109:109 -> c16
+    24:24:java.lang.String c16(java.lang.String):109:109 -> c16
+    30:30:java.lang.String c16(java.lang.String):109:109 -> c16
+    1:4:java.lang.String c17(java.lang.String):110:110 -> c17
+    5:9:java.lang.String c17(java.lang.String):0:0 -> c17
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c17(java.lang.String):0:0 -> c17
+    12:12:java.lang.String c17(java.lang.String):110:110 -> c17
+    15:15:java.lang.String c17(java.lang.String):110:110 -> c17
+    19:19:java.lang.String c17(java.lang.String):110:110 -> c17
+    24:24:java.lang.String c17(java.lang.String):110:110 -> c17
+    30:30:java.lang.String c17(java.lang.String):110:110 -> c17
+    1:4:java.lang.String c18(java.lang.String):111:111 -> c18
+    5:9:java.lang.String c18(java.lang.String):0:0 -> c18
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c18(java.lang.String):0:0 -> c18
+    12:12:java.lang.String c18(java.lang.String):111:111 -> c18
+    15:15:java.lang.String c18(java.lang.String):111:111 -> c18
+    19:19:java.lang.String c18(java.lang.String):111:111 -> c18
+    24:24:java.lang.String c18(java.lang.String):111:111 -> c18
+    30:30:java.lang.String c18(java.lang.String):111:111 -> c18
+    1:4:java.lang.String c19(java.lang.String):112:112 -> c19
+    5:9:java.lang.String c19(java.lang.String):0:0 -> c19
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c19(java.lang.String):0:0 -> c19
+    12:12:java.lang.String c19(java.lang.String):112:112 -> c19
+    15:15:java.lang.String c19(java.lang.String):112:112 -> c19
+    19:19:java.lang.String c19(java.lang.String):112:112 -> c19
+    24:24:java.lang.String c19(java.lang.String):112:112 -> c19
+    30:30:java.lang.String c19(java.lang.String):112:112 -> c19
+    1:4:java.lang.String c20(java.lang.String):113:113 -> c20
+    5:9:java.lang.String c20(java.lang.String):0:0 -> c20
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c20(java.lang.String):0:0 -> c20
+    12:12:java.lang.String c20(java.lang.String):113:113 -> c20
+    15:15:java.lang.String c20(java.lang.String):113:113 -> c20
+    19:19:java.lang.String c20(java.lang.String):113:113 -> c20
+    24:24:java.lang.String c20(java.lang.String):113:113 -> c20
+    30:30:java.lang.String c20(java.lang.String):113:113 -> c20
+    1:4:java.lang.String c21(java.lang.String):114:114 -> c21
+    5:9:java.lang.String c21(java.lang.String):0:0 -> c21
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c21(java.lang.String):0:0 -> c21
+    12:12:java.lang.String c21(java.lang.String):114:114 -> c21
+    15:15:java.lang.String c21(java.lang.String):114:114 -> c21
+    19:19:java.lang.String c21(java.lang.String):114:114 -> c21
+    24:24:java.lang.String c21(java.lang.String):114:114 -> c21
+    30:30:java.lang.String c21(java.lang.String):114:114 -> c21
+    1:4:java.lang.String c22(java.lang.String):115:115 -> c22
+    5:9:java.lang.String c22(java.lang.String):0:0 -> c22
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c22(java.lang.String):0:0 -> c22
+    12:12:java.lang.String c22(java.lang.String):115:115 -> c22
+    15:15:java.lang.String c22(java.lang.String):115:115 -> c22
+    19:19:java.lang.String c22(java.lang.String):115:115 -> c22
+    24:24:java.lang.String c22(java.lang.String):115:115 -> c22
+    30:30:java.lang.String c22(java.lang.String):115:115 -> c22
+    1:4:java.lang.String c23(java.lang.String):116:116 -> c23
+    5:9:java.lang.String c23(java.lang.String):0:0 -> c23
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c23(java.lang.String):0:0 -> c23
+    12:12:java.lang.String c23(java.lang.String):116:116 -> c23
+    15:15:java.lang.String c23(java.lang.String):116:116 -> c23
+    19:19:java.lang.String c23(java.lang.String):116:116 -> c23
+    24:24:java.lang.String c23(java.lang.String):116:116 -> c23
+    30:30:java.lang.String c23(java.lang.String):116:116 -> c23
+    1:4:java.lang.String c24(java.lang.String):117:117 -> c24
+    5:9:java.lang.String c24(java.lang.String):0:0 -> c24
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c24(java.lang.String):0:0 -> c24
+    12:12:java.lang.String c24(java.lang.String):117:117 -> c24
+    15:15:java.lang.String c24(java.lang.String):117:117 -> c24
+    19:19:java.lang.String c24(java.lang.String):117:117 -> c24
+    24:24:java.lang.String c24(java.lang.String):117:117 -> c24
+    30:30:java.lang.String c24(java.lang.String):117:117 -> c24
+    1:4:java.lang.String c25(java.lang.String):118:118 -> c25
+    5:9:java.lang.String c25(java.lang.String):0:0 -> c25
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c25(java.lang.String):0:0 -> c25
+    12:12:java.lang.String c25(java.lang.String):118:118 -> c25
+    15:15:java.lang.String c25(java.lang.String):118:118 -> c25
+    19:19:java.lang.String c25(java.lang.String):118:118 -> c25
+    24:24:java.lang.String c25(java.lang.String):118:118 -> c25
+    30:30:java.lang.String c25(java.lang.String):118:118 -> c25
+    1:4:java.lang.String c26(java.lang.String):119:119 -> c26
+    5:9:java.lang.String c26(java.lang.String):0:0 -> c26
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c26(java.lang.String):0:0 -> c26
+    12:12:java.lang.String c26(java.lang.String):119:119 -> c26
+    15:15:java.lang.String c26(java.lang.String):119:119 -> c26
+    19:19:java.lang.String c26(java.lang.String):119:119 -> c26
+    24:24:java.lang.String c26(java.lang.String):119:119 -> c26
+    30:30:java.lang.String c26(java.lang.String):119:119 -> c26
+    1:4:java.lang.String c27(java.lang.String):120:120 -> c27
+    5:9:java.lang.String c27(java.lang.String):0:0 -> c27
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c27(java.lang.String):0:0 -> c27
+    12:12:java.lang.String c27(java.lang.String):120:120 -> c27
+    15:15:java.lang.String c27(java.lang.String):120:120 -> c27
+    19:19:java.lang.String c27(java.lang.String):120:120 -> c27
+    24:24:java.lang.String c27(java.lang.String):120:120 -> c27
+    30:30:java.lang.String c27(java.lang.String):120:120 -> c27
+    1:4:java.lang.String c28(java.lang.String):121:121 -> c28
+    5:9:java.lang.String c28(java.lang.String):0:0 -> c28
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c28(java.lang.String):0:0 -> c28
+    12:12:java.lang.String c28(java.lang.String):121:121 -> c28
+    15:15:java.lang.String c28(java.lang.String):121:121 -> c28
+    19:19:java.lang.String c28(java.lang.String):121:121 -> c28
+    24:24:java.lang.String c28(java.lang.String):121:121 -> c28
+    30:30:java.lang.String c28(java.lang.String):121:121 -> c28
+    1:4:java.lang.String c29(java.lang.String):122:122 -> c29
+    5:9:java.lang.String c29(java.lang.String):0:0 -> c29
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c29(java.lang.String):0:0 -> c29
+    12:12:java.lang.String c29(java.lang.String):122:122 -> c29
+    15:15:java.lang.String c29(java.lang.String):122:122 -> c29
+    19:19:java.lang.String c29(java.lang.String):122:122 -> c29
+    24:24:java.lang.String c29(java.lang.String):122:122 -> c29
+    30:30:java.lang.String c29(java.lang.String):122:122 -> c29
+    1:4:java.lang.String c30(java.lang.String):123:123 -> c30
+    5:9:java.lang.String c30(java.lang.String):0:0 -> c30
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":10,"2":12,"3":15,"4":19,"5":24,"6":30},"outline":"La/a;c(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"}
+    10:10:java.lang.String c30(java.lang.String):0:0 -> c30
+    12:12:java.lang.String c30(java.lang.String):123:123 -> c30
+    15:15:java.lang.String c30(java.lang.String):123:123 -> c30
+    19:19:java.lang.String c30(java.lang.String):123:123 -> c30
+    24:24:java.lang.String c30(java.lang.String):123:123 -> c30
+    30:30:java.lang.String c30(java.lang.String):123:123 -> c30
+fox.droidsaw.r8fixture.Main -> fox.droidsaw.r8fixture.Main:
+# {"id":"sourceFile","fileName":"Main.kt"}
+    4:8:void main(java.lang.String[]):132:132 -> main
+    9:10:void main(java.lang.String[]):133:134 -> main
+    11:34:void main(java.lang.String[]):134:134 -> main
+    35:55:void main(java.lang.String[]):135:135 -> main
+    56:76:void main(java.lang.String[]):136:136 -> main
+    77:97:void main(java.lang.String[]):137:137 -> main
+    98:118:void main(java.lang.String[]):138:138 -> main
+    119:139:void main(java.lang.String[]):139:139 -> main
+    140:160:void main(java.lang.String[]):140:140 -> main
+    161:181:void main(java.lang.String[]):141:141 -> main
+    182:202:void main(java.lang.String[]):142:142 -> main
+    203:224:void main(java.lang.String[]):143:143 -> main
+    225:251:void main(java.lang.String[]):146:146 -> main
+    252:272:void main(java.lang.String[]):147:147 -> main
+    273:293:void main(java.lang.String[]):148:148 -> main
+    294:314:void main(java.lang.String[]):149:149 -> main
+    315:335:void main(java.lang.String[]):150:150 -> main
+    336:356:void main(java.lang.String[]):151:151 -> main
+    357:377:void main(java.lang.String[]):152:152 -> main
+    378:398:void main(java.lang.String[]):153:153 -> main
+    399:419:void main(java.lang.String[]):154:154 -> main
+    420:440:void main(java.lang.String[]):155:155 -> main
+    441:450:void main(java.lang.String[]):157:157 -> main
+    451:471:void main(java.lang.String[]):158:158 -> main
+    472:492:void main(java.lang.String[]):159:159 -> main
+    493:513:void main(java.lang.String[]):160:160 -> main
+    514:534:void main(java.lang.String[]):161:161 -> main
+    535:555:void main(java.lang.String[]):162:162 -> main
+    556:576:void main(java.lang.String[]):163:163 -> main
+    577:597:void main(java.lang.String[]):164:164 -> main
+    598:618:void main(java.lang.String[]):165:165 -> main
+    619:639:void main(java.lang.String[]):166:166 -> main
+    640:660:void main(java.lang.String[]):167:167 -> main
+    661:670:void main(java.lang.String[]):169:169 -> main

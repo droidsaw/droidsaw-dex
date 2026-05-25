@@ -1,0 +1,6 @@
+zero=0
+one_byte_pos=127
+one_byte_neg=-128
+two_byte_pos=4660
+pos_max=32767
+neg_max=-32768

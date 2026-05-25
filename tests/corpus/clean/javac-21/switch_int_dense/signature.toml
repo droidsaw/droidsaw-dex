@@ -1,0 +1,20 @@
+# Source-of-truth fingerprint for javac-21 lowering of dense-int switch.
+#
+# When `switch (int)` arms are densely packed (low fill-factor threshold),
+# javac emits a `tableswitch` opcode — O(1) dispatch via index-into-table.
+# This is distinct from `lookupswitch` (sparse arms) which is binary search.
+#
+# Recovers as `Stmt::MultiArm` with `Discriminant::Int(_)` and arms tagged
+# with the literal int values.
+
+toolchain = "javac"
+version = "21"
+construct = "switch_int_dense"
+discriminant_kind = "Int"
+outer_form = "tableswitch"
+arm_pattern = "single-target jump per dense-packed int literal"
+recovers = "Stmt::MultiArm { discriminant: Discriminant::Int(_), arms: [(ArmPattern::IntLiterals($LITS$), $BODY$), ...], default: $D$, provenance: Provenance { source_dialect: SourceDialect::Java(JavaVersion::V21), ... } }"
+
+[version_pin]
+javac = "21"
+d8 = "AGP 8.x"

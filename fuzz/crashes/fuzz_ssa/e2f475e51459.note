@@ -1,0 +1,9 @@
+stage: parser (hit via fuzz_ssa's pre-SSA parse step)
+panic: slice index starts at 12 but ends at 0
+site: src/header.rs:138:50
+repro: cargo fuzz run fuzz_ssa fuzz/crashes/fuzz_ssa/e2f475e51459
+
+Same root cause as fuzz_parser/877d6398066a and fuzz_cfg/bed8217fc01e —
+header.rs:138 slice-OOB. The SSA harness couldn't get past parse so SSA
+construction itself is not yet exercised by this crasher. After the parser
+fix lands, re-run fuzz_ssa to see if a genuinely SSA-stage crash surfaces.

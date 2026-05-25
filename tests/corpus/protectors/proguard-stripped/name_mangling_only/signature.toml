@@ -1,0 +1,38 @@
+# Source-of-truth fingerprint for the ProGuard-stripped baseline.
+#
+# Purpose: NEGATIVE GATE for the protector-recognizer family. Plain
+# ProGuard name-mangling (`a.b.c` style identifiers, short member names,
+# stripped debug info) is NOT itself an adversarial-toolchain signature —
+# it's a build-time size optimization that bears no semantic protection.
+# The protector recognizers (SignatureIds 200..299) MUST NOT fire on
+# code whose only obfuscation is name mangling.
+#
+# This entry documents the baseline as part of `tests/corpus/protectors/`
+# so that a future regression that broadens any protector recognizer
+# would be caught by an empirical match against this corpus.
+#
+# Acceptance gate (Brief line 38 of dex-protector-corpus.md):
+#   "R8-processed APK: UNRECOGNIZED_REGION count unchanged (clean-pipeline
+#    APK; no protector signatures should match)."
+#
+# The threads-base.apk ratchet (`tests/baselines/unrecognized.toml`,
+# baseline=3) is the load-bearing gate; this corpus entry is the
+# documentation surface that names the negative-gate intent. Adding
+# load-bearing assertions here would be redundant.
+#
+# References:
+# - droidsaw-dex/src/signatures/protectors/mod.rs §"Discipline".
+# - Allatori, Stringer, and similar protectors are deferred until a
+#   real consumer surfaces.
+
+toolchain = "proguard-stripped"
+version = "baseline"
+construct = "name_mangling_only"
+discriminant_kind = "n/a"
+outer_form = "no recognizer fires (negative gate)"
+arm_pattern = "n/a"
+recovers = "(negative gate) NoMatch on every signature in 200..=299; the threads-base.apk ratchet at baseline=3 is the empirical guarantee"
+
+[version_pin]
+javac = "21"
+d8 = "AGP 8.x"

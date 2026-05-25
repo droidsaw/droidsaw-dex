@@ -1,0 +1,4 @@
+zero=0
+pos_max=127
+neg_one=-1
+neg_max=-128

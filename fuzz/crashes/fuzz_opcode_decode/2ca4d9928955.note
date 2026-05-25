@@ -1,0 +1,9 @@
+stage: decode
+panic: attempt to add with overflow
+site: src/decode.rs:476:41
+repro: cargo fuzz run fuzz_opcode_decode fuzz/crashes/fuzz_opcode_decode/2ca4d9928955
+input bytes: 63 08 3f 3f fd 8f 11 04 ff ff
+
+Arithmetic overflow in the instruction decoder, presumably on a
+branch-offset or PC-relative computation. Fix: use checked_add / u32::from
+with bounds checks instead of raw +. Out of scope for dex-fuzz.

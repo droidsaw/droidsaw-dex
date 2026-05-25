@@ -1,0 +1,15 @@
+stage: decode
+panic: attempt to add with overflow
+site: src/decode.rs:280:28
+repro: cargo fuzz run fuzz_opcode_decode fuzz/crashes/fuzz_opcode_decode/719b3a5e2b9b
+input bytes: 2b 37 ff ff ff ff 25
+
+Distinct from 2ca4d9928955 (F3rc start_reg overflow). This site is
+`read_unit`: `let off = insns_off + ((pc + unit_idx) as usize) * 2;`.
+u32 `pc` advances through the decode loop and can approach u32::MAX on
+large synthesized `insns_size` values — then `pc + unit_idx` overflows.
+
+Filed during dex-hardening's fuzz re-smoke (directive #7). Handed off
+to `dex-hardening-sweep` for fix: `pc.checked_add(unit_idx)` and return
+`DexError::TruncatedInstruction` on overflow, or clamp `insns_size` at
+the parser boundary before it ever feeds `decode_insns`.

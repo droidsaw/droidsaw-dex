@@ -1,0 +1,54 @@
+# Source-of-truth fingerprint for kotlinc-1.9.22 lowering of `when (String)`.
+#
+# THREE distinct lowering strategies, gated on arm count (audit finding #7):
+#
+# Strategy A (≤2 arms): linear `Intrinsics.areEqual` chain
+#   per arm:
+#     aload <discriminant>
+#     ldc "<key>"
+#     invokestatic kotlin/jvm/internal/Intrinsics.areEqual:(LObject;LObject;)Z
+#     ifeq <next-arm-or-else>
+#     <arm body>
+#     goto <return-merge>
+#   else arm: <else body>
+#   (No `String.hashCode()` call. Recognizer shape is identical to
+#    sealed-OBJECT 02arms — discriminator is the second-operand type.)
+#
+# Strategy B (5–N arms, dense hash): `String.hashCode() + tableswitch`
+#   outer:
+#     aload <discriminant>
+#     invokevirtual java/lang/String.hashCode:()I
+#     tableswitch { hash1: arm1; hash2: arm2; ...; default: <else> }
+#   per outer arm (collision-bucketed):
+#     aload <discriminant>
+#     ldc "<key>"
+#     invokevirtual java/lang/String.equals:(LObject;)Z
+#     ifne <body>
+#     goto <else>
+#
+# Strategy C (sparse hash at scale): `String.hashCode() + lookupswitch`
+#   Same shape as Strategy B but `lookupswitch` instead of `tableswitch`.
+#   kotlinc heuristic mirrors javac's standard density rule.
+#
+# Recognizer fires across all three strategies with the same lifted IR
+# (`Stmt::MultiArm { discriminant: Discriminant::String(_) }`). Fixture
+# corpus exercises all three: 02arms (A), 05arms (B), 50arms (C).
+#
+# References:
+# - droidsaw-dex/src/signatures/kotlinc19/when_string.rs.
+
+toolchain = "kotlinc"
+version = "1.9.22"
+construct = "when_string"
+discriminant_kind = "String"
+outer_form = "≤2 arms: linear Intrinsics.areEqual chain; ≥5 arms: String.hashCode() + tableswitch|lookupswitch"
+arm_pattern = """
+strategy_A_le2 = [Aload($DISCRIM$), Ldc($KEY$), Invokestatic(Intrinsics.areEqual), Ifeq($NEXT$), $BODY$, Goto($RETURN$)]
+strategy_BC_ge5 = [Aload($DISCRIM$), Ldc($KEY$), Invokevirtual(String.equals), Ifne($BODY$)]
+"""
+inner_form = "tableswitch on hashCode (≥5 dense) | lookupswitch on hashCode (sparse)"
+recovers = "Stmt::MultiArm { discriminant: Discriminant::String(_), arms: [(ArmPattern::StringLiterals(...), $BODY$), ...], default: $ELSE$, provenance: Provenance { source_dialect: SourceDialect::Kotlin(KotlinVersion::V19), ... } }"
+
+[version_pin]
+kotlinc = "1.9.22"
+d8 = "AGP 8.x"

@@ -1,0 +1,16 @@
+# Structural assertion for the DCE-unreachable-branch recogniser
+# (Wave 2A). The transformation is lossy; the recogniser's signal
+# is the absence of the dead branch, which is hard to assert as a
+# positive structural test. Wave 2A may pivot this to a smoke check
+# (FLAG field eliminated; init() inlined or removed; compute's body
+# is a single arithmetic-and-return).
+
+construct = "dce_unreachable_branch"
+expected_transform = "DeadBranchStripped"
+
+[expected]
+# The FLAG field should not survive R8 dead-code elimination.
+flag_field_eliminated = true
+# The compute method should have at most one return statement after
+# the dead branch is stripped.
+return_count_max = 1

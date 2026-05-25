@@ -1,0 +1,12 @@
+stage: parser (amplification; dex-hardening-sweep 15-min campaign)
+kind: OOM (libFuzzer rss > 2GiB at ~292k execs)
+site: DexFile::parse — allocation driven by an unchecked field; 112-byte
+  input with header-like prefix (`dex\n039\0`) and count/size fields that
+  amplify into a multi-GB allocation
+repro: cargo fuzz run fuzz_parser fuzz/crashes/fuzz_parser/oom-c600defc01c6527d.bin
+size: 112 bytes
+
+Distinct from oom-c0cb23eb4eaa (also parser/OOM). Filed for
+`dex-resource-limits` — out of scope for `dex-hardening-sweep`.
+Remediation: parse-time caps on header count fields bounded against
+`data.len()` (same pattern the stream-specific brief calls out).

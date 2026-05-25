@@ -1,0 +1,22 @@
+# Source-of-truth fingerprint for javac-21 lowering of enhanced-for over Iterable.
+#
+# `for (T x : iterable) { body }` lowers to:
+#   Iterator<T> it = iterable.iterator();
+#   while (it.hasNext()) {
+#       T x = it.next();
+#       body
+#   }
+#
+# Recovered as `Stmt::ForEach { var, iterable, body }`.
+
+toolchain = "javac"
+version = "21"
+construct = "enhanced_for_iterable"
+discriminant_kind = "Iterable"
+outer_form = "while-loop on Iterator.hasNext"
+arm_pattern = "Iterator.next assigned to loop variable"
+recovers = "Stmt::ForEach { var: $X$, iterable: $XS$, body: $BODY$, provenance: Provenance { source_dialect: SourceDialect::Java(JavaVersion::V21), ... } }"
+
+[version_pin]
+javac = "21"
+d8 = "AGP 8.x"

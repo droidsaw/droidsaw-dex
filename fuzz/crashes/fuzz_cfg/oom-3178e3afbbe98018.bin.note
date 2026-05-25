@@ -1,0 +1,12 @@
+stage: cfg (amplification; dex-hardening-sweep extended campaign)
+kind: OOM (libFuzzer rss > 2GiB — exit 71 during REDUCE phase)
+site: DexFile::parse or CFG construction — 120-byte input with dex-039
+  header prefix triggering count/size amplification before CFG reaches
+  instruction walk
+repro: cargo fuzz run fuzz_cfg fuzz/crashes/fuzz_cfg/oom-3178e3afbbe98018.bin
+size: 120 bytes
+
+Distinct from oom-268ac1d3377b / oom-291ceccdd32b (both filed earlier
+by dex-hardening). Filed for `dex-resource-limits` — out of scope for
+`dex-hardening-sweep`. Remediation: parse-time caps on header count
+fields bounded against `data.len()` before CFG ingestion.

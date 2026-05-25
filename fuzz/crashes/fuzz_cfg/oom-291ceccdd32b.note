@@ -1,0 +1,16 @@
+stage: cfg (amplification; gets past parse, dies in CFG/decode path)
+kind: OOM (libFuzzer aborted on malloc(66,758,639,616) ≈ 66 GiB)
+site: parse → Cfg::build, no single panic location
+repro: cargo fuzz run fuzz_cfg fuzz/crashes/fuzz_cfg/oom-291ceccdd32b
+size: 147 bytes
+
+Second, larger-scale fuzz_cfg OOM found in the 5-minute smoke (distinct
+from oom-268ac1d3377b, which was 113 bytes and triggered ~2 GiB). This
+147-byte input requests ~66 GiB — suggesting it trips an even more
+unbounded count field than the prior one, likely `insns_size` on a
+code_item being multiplied through pre-allocation, or a pre-size on a
+block successor list driven off an attacker-controlled type count.
+
+Filed for `dex-hardening-sweep`. Same upstream defense should cover
+this and the other OOMs: bound parse-time entity counts against
+`data.len()`.

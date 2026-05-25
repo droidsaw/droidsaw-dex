@@ -1,0 +1,18 @@
+stage: decode
+panic: attempt to multiply with overflow
+site: src/decode.rs:690
+repro: cargo fuzz run fuzz_opcode_decode fuzz/crashes/fuzz_opcode_decode/2de91997b6d1
+input bytes: 00 03 01 08 00 00 00 10 00 00 1b
+
+fill-array-data payload (ident 0x03): `let bytes = size * width;` where
+both operands are u32 read from the stream — `size` from `pread_with::<u32>`
+at `base + 4`, `width` from the second code unit. An adversarial input
+sets `size` and `width` such that their product overflows u32, triggering
+`core::panicking::panic_const::panic_const_mul_overflow`.
+
+Distinct from the two decode.rs sites already handled this stream
+(`decode_single` F3rc start_reg + i; `read_unit` pc + unit_idx). Filed
+for `dex-hardening-sweep`. Fix shape: `size.checked_mul(width)` + typed
+`DexError::InvalidInstruction`, or clamp `size * width` at the payload
+length computation (it's a declared byte count — reject if it exceeds
+remaining data).

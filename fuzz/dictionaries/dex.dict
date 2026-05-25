@@ -1,0 +1,164 @@
+# dex.dict — libFuzzer dictionary for the DEX format.
+#
+# Token provenance is cited inline. Every token traces to a production
+# source line or to a DEX specification section the parser dispatches on.
+# Drift detection: when this file diverges from production, the cite no
+# longer matches; the diff is reviewable.
+#
+# Format reference: https://llvm.org/docs/LibFuzzer.html#dictionaries
+# DEX format reference: https://source.android.com/docs/core/runtime/dex-format
+
+# === File magic ===
+# Source: droidsaw-dex/src/header.rs:15 — const DEX_MAGIC = b"dex\n"
+# Versioned suffix: DEX header is `dex\n` + 3-byte version + null.
+"dex\x0a035\x00"
+"dex\x0a036\x00"
+"dex\x0a037\x00"
+"dex\x0a038\x00"
+"dex\x0a039\x00"
+"dex\x0a040\x00"
+"dex\x0a041\x00"
+
+# === Endian tag ===
+# Source: DEX spec §"endian_tag" — `0x12345678` reads as `0x78 0x56 0x34 0x12`
+# on little-endian (the standard). Reversed `0x78563412` is the rare
+# big-endian DEX (rejected by ART since Android L).
+endian_le="\x78\x56\x34\x12"
+endian_be="\x12\x34\x56\x78"
+
+# === Header size constants ===
+# Source: DEX spec §"header_size" — v035-v039 is 0x70 (112), v041 is 0x78 (120).
+hdr_size_classic="\x70\x00\x00\x00"
+hdr_size_container="\x78\x00\x00\x00"
+
+# === map_list section type codes (u16 LE) ===
+# Source: DEX spec §"type_codes". Production dispatch in
+# droidsaw-dex/src/parser/mod.rs map_list iteration.
+type_header_item="\x00\x00"
+type_string_id_item="\x01\x00"
+type_type_id_item="\x02\x00"
+type_proto_id_item="\x03\x00"
+type_field_id_item="\x04\x00"
+type_method_id_item="\x05\x00"
+type_class_def_item="\x06\x00"
+type_call_site_id_item="\x07\x00"
+type_method_handle_item="\x08\x00"
+type_map_list="\x00\x10"
+type_type_list="\x01\x10"
+type_annotation_set_ref_list="\x02\x10"
+type_annotation_set_item="\x03\x10"
+type_class_data_item="\x00\x20"
+type_code_item="\x01\x20"
+type_string_data_item="\x02\x20"
+type_debug_info_item="\x03\x20"
+type_annotation_item="\x04\x20"
+type_encoded_array_item="\x05\x20"
+type_annotations_directory_item="\x06\x20"
+type_hiddenapi_class_data_item="\x00\x70"
+
+# === Primitive type descriptors (single-char TypeId values) ===
+# Source: DEX spec §"TypeDescriptor". Used in proto_id signatures, field
+# types, return types — high-density in real DEX inputs.
+"V"
+"Z"
+"B"
+"S"
+"C"
+"I"
+"J"
+"F"
+"D"
+"["
+
+# === Common class-descriptor prefixes ===
+# Source: empirical from any non-trivial APK; production indexes every
+# type_ids entry, so these strings appear in real input frequently.
+"Ljava/lang/"
+"Ljava/util/"
+"Ljava/io/"
+"Ljava/nio/"
+"Landroid/app/"
+"Landroid/os/"
+"Landroid/content/"
+"Landroid/view/"
+"Landroid/widget/"
+"Landroidx/"
+"Lkotlin/"
+"Lkotlinx/"
+"Ljava/lang/Object;"
+"Ljava/lang/String;"
+"Ljava/lang/Class;"
+
+# === Common method names ===
+"<init>"
+"<clinit>"
+"toString"
+"hashCode"
+"equals"
+"main"
+
+# === Access flag bits (u32, but listed as packed LE bytes for the
+# top byte where they appear in field/method/class entries) ===
+# Source: DEX spec §"access_flags". 0x0001 ACC_PUBLIC; 0x0002 ACC_PRIVATE;
+# 0x0008 ACC_STATIC; 0x0010 ACC_FINAL; 0x0400 ACC_ABSTRACT;
+# 0x10000 ACC_CONSTRUCTOR.
+# First-pass subset: only the two most-common composite values below.
+# Remaining flags (PRIVATE, ABSTRACT, individual STATIC/FINAL bits) are
+# omitted by design — they are unlocked by mutation once the header +
+# class_def_item gates pass, and adding them as standalone u32 tokens
+# would dilute mutation pressure on the higher-leverage anchors above.
+acc_public_static_final="\x19\x00\x00\x00"
+acc_constructor="\x00\x00\x01\x00"
+
+# === Switch payload pseudo-opcode magics (first u16 of packed/sparse switch payload) ===
+# Source: DEX spec §"packed-switch-payload" / §"sparse-switch-payload"
+# / §"fill-array-data-payload". Production reader dispatches at top of
+# code_item walk.
+packed_switch_ident="\x00\x01"
+sparse_switch_ident="\x00\x02"
+fill_array_data_ident="\x00\x03"
+
+# === High-impact opcode bytes ===
+# Source: DEX spec §"Opcode Reference". The subset below is the most
+# common opcode high-byte values in real DEX code_item streams.
+op_nop="\x00"
+op_move="\x01"
+op_return_void="\x0e"
+op_return="\x0f"
+op_const_4="\x12"
+op_const_16="\x13"
+op_const_string="\x1a"
+op_const_class="\x1c"
+op_check_cast="\x1f"
+op_instance_of="\x20"
+op_new_instance="\x22"
+op_throw="\x27"
+op_goto="\x28"
+op_packed_switch="\x2b"
+op_sparse_switch="\x2c"
+op_if_eq="\x32"
+op_invoke_virtual="\x6e"
+op_invoke_super="\x6f"
+op_invoke_direct="\x70"
+op_invoke_static="\x71"
+op_invoke_interface="\x72"
+op_invoke_virtual_range="\x74"
+op_invoke_polymorphic="\xfa"
+op_invoke_custom="\xfc"
+op_const_method_handle="\xfe"
+op_const_method_type="\xff"
+
+# === debug_info opcode bytes ===
+# Source: DEX spec §"debug_info_item". Production state machine at
+# droidsaw-dex/src/debug.rs. The named 10 opcodes (0x00..0x09) are the
+# control opcodes; 0x0A..0xFF is the special-opcode arithmetic range.
+dbg_end_sequence="\x00"
+dbg_advance_pc="\x01"
+dbg_advance_line="\x02"
+dbg_start_local="\x03"
+dbg_start_local_extended="\x04"
+dbg_end_local="\x05"
+dbg_restart_local="\x06"
+dbg_set_prologue_end="\x07"
+dbg_set_epilogue_begin="\x08"
+dbg_set_file="\x09"

@@ -1,0 +1,9 @@
+stage: parser (hit via fuzz_cfg's pre-CFG parse step)
+panic: slice index starts at 12 but ends at 0
+site: src/header.rs:138:50
+repro: cargo fuzz run fuzz_cfg fuzz/crashes/fuzz_cfg/bed8217fc01e
+
+Same root cause as fuzz_parser/877d6398066a — DEX header slice read without
+bounds check. The CFG target is a different mutated input but hits the same
+line. Filing separately so the per-target smoke ratchet tracks each
+panicking input exactly; fixing header.rs:138 should resolve both.

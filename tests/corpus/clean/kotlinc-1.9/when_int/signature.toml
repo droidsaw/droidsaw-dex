@@ -1,0 +1,33 @@
+# Source-of-truth fingerprint for kotlinc-1.9.22 lowering of `when (Int)` (dense).
+#
+# kotlinc 1.9.22 emits `tableswitch` for dense ranges 1..N consistently at
+# 2/5/50 arms — NO threshold migration in dense case (audit finding #8).
+#
+#   iload <discriminant>
+#   tableswitch { 1: arm1_body; 2: arm2_body; ...; default: <else_body> }
+#   <arm_n_body>: <body>; goto <return>
+#   <else_body>: <body>; goto <return>
+#
+# Sparse-value case (1, 100, 1000, ...) uses `lookupswitch` — see
+# `when_int_sparse/signature.toml`.
+#
+# References:
+# - droidsaw-dex/src/signatures/kotlinc19/when_int.rs (shape-shared
+#   with `when_int_sparse` recognizer).
+
+toolchain = "kotlinc"
+version = "1.9.22"
+construct = "when_int"
+discriminant_kind = "Int"
+outer_form = "tableswitch on int discriminant (dense range)"
+arm_pattern = """
+[
+  $LITERAL_TARGET$: $ARM_BODY$, Goto($RETURN$),
+  default: $ELSE_BODY$, Goto($RETURN$),
+]
+"""
+recovers = "Stmt::MultiArm { discriminant: Discriminant::Int($DISCRIM$), arms: [(ArmPattern::IntLiterals(vec![$N$]), $BODY$), ...], default: $ELSE$, provenance: Provenance { source_dialect: SourceDialect::Kotlin(KotlinVersion::V19), ... } }"
+
+[version_pin]
+kotlinc = "1.9.22"
+d8 = "AGP 8.x"

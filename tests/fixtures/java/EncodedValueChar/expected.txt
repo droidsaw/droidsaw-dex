@@ -1,0 +1,6 @@
+min=0000
+boundary_7F=007F
+boundary_80=0080
+boundary_FF=00FF
+boundary_100=0100
+max=FFFF

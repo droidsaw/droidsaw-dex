@@ -1,0 +1,2 @@
+Caught ExceptionB: ouch-B
+Caught Exception2: ouch-2

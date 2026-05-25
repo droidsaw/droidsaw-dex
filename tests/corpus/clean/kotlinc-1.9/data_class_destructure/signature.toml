@@ -1,0 +1,43 @@
+# Source-of-truth fingerprint for kotlinc-1.9.22 lowering of data-class
+# destructuring (`val (a, b) = pair`).
+#
+# Lowers to consecutive `componentN()` synthetic-method invokevirtuals
+# on the same receiver, monotone N starting at 1 (audit finding #9):
+#
+#   aload <pair>
+#   invokevirtual <PairType>.component1:()<T1>
+#   <store-to-a>
+#   aload <pair>
+#   invokevirtual <PairType>.component2:()<T2>
+#   <store-to-b>
+#
+# Recognizer fires on the consecutive-`componentN` chain and lifts to a
+# multi-binding `Stmt::Let` (defined in `structure.rs`). Receiver type
+# must have @kotlin.Metadata + auto-generated `componentN` accessors
+# (data class indicator).
+#
+# Single-shape; N>2 / lambda-param / `_`-discard variants are deferred.
+#
+# References:
+# - droidsaw-dex/src/signatures/kotlinc19/data_class_destructure.rs.
+
+toolchain = "kotlinc"
+version = "1.9.22"
+construct = "data_class_destructure"
+discriminant_kind = "DataClassReceiver"
+outer_form = "consecutive componentN() invokevirtuals on same receiver, monotone N from 1"
+arm_pattern = """
+[
+  Aload($PAIR$),
+  Invokevirtual($PAIR_TYPE$.component1),
+  Store($A$),
+  Aload($PAIR$),
+  Invokevirtual($PAIR_TYPE$.component2),
+  Store($B$),
+]
+"""
+recovers = "Stmt::Let { bindings: [($A$, ComponentCall($PAIR$, 1)), ($B$, ComponentCall($PAIR$, 2))], provenance: Provenance { source_dialect: SourceDialect::Kotlin(KotlinVersion::V19), ... } }"
+
+[version_pin]
+kotlinc = "1.9.22"
+d8 = "AGP 8.x"

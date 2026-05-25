@@ -1,0 +1,22 @@
+# Source-of-truth fingerprint for R8 9.0 block-outlining.
+#
+# R8 detects repeated bytecode sequences across method bodies and hoists
+# them into a synthetic helper method (typically named with a `$$` prefix
+# or under R8's renamed namespace `LX/...;`). The original methods become
+# single `invoke-static $synthetic` trampolines.
+#
+# Recovers in droidsaw as a `Stmt::OutlinedBlock` lift on the trampoline
+# method, plus an `R8Origin { variant: R8Transform::BlockOutlined, ... }`
+# tag on the rewritten subtree.
+
+toolchain = "r8"
+version = "9.0"
+construct = "block_outlining"
+discriminant_kind = "MethodBody"
+outer_form = "single invoke-static call to synthetic helper"
+arm_pattern = "trampoline method whose body is a single invoke-static + return"
+recovers = "Stmt::OutlinedBlock { synthetic_target: MethodIdx, origin: R8Origin { variant: R8Transform::BlockOutlined, source_pc: Some(_), synthetic_helper: Some(_), confidence: 100 } }"
+
+[version_pin]
+javac = "21"
+d8 = "AGP 8+"

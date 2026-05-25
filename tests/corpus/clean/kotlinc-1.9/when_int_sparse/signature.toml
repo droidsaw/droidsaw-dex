@@ -1,0 +1,36 @@
+# Source-of-truth fingerprint for kotlinc-1.9.22 lowering of `when (Int)` (sparse).
+#
+# Sparse non-contiguous integer values (1, 100, 1000, 10000, ...) trigger
+# `lookupswitch` instead of `tableswitch` — distinct from the dense
+# `when_int` lowering (audit finding #8).
+#
+#   iload <discriminant>
+#   lookupswitch { 1: arm1; 100: arm2; 1000: arm3; 10000: arm4; default: <else> }
+#
+# Recognizer is shape-shared with `when_int` — same lifted IR, different
+# bytecode opcode. Discriminator: `lookupswitch` opcode (vs `tableswitch`).
+#
+# Required for recognizer roundtrip-gate coverage (was missing from initial
+# Brief; added per audit finding #8 to ensure the recognizer matches both
+# switch shapes).
+#
+# References:
+# - droidsaw-dex/src/signatures/kotlinc19/when_int.rs (single recognizer
+#   covers both dense and sparse via opcode dispatch).
+
+toolchain = "kotlinc"
+version = "1.9.22"
+construct = "when_int_sparse"
+discriminant_kind = "Int"
+outer_form = "lookupswitch on int discriminant (sparse values)"
+arm_pattern = """
+[
+  $LITERAL_KEY$: $ARM_BODY$, Goto($RETURN$),
+  default: $ELSE_BODY$, Goto($RETURN$),
+]
+"""
+recovers = "Stmt::MultiArm { discriminant: Discriminant::Int($DISCRIM$), arms: [(ArmPattern::IntLiterals(vec![$N$]), $BODY$), ...], default: $ELSE$, provenance: Provenance { source_dialect: SourceDialect::Kotlin(KotlinVersion::V19), ... } }"
+
+[version_pin]
+kotlinc = "1.9.22"
+d8 = "AGP 8.x"

@@ -1,0 +1,45 @@
+# Source-of-truth fingerprint for javac-21 lowering of string concatenation
+# via invokedynamic StringConcatFactory.
+#
+# javac 9+ lowers `"a" + x + "b"` to a single `invokedynamic` call site
+# bound to `java.lang.invoke.StringConcatFactory.makeConcatWithConstants`,
+# rather than the pre-Java-9 `new StringBuilder().append(...).toString()`
+# chain. d8/R8 preserves the invoke-custom shape for `min_api >= 26`
+# (Android O+); for earlier targets d8 desugars back to StringBuilder.
+#
+# The DEX call_site's encoded_array layout for this bootstrap:
+#
+#   [0] VALUE_METHOD_HANDLE -> bootstrap method
+#                              (StringConcatFactory.makeConcatWithConstants)
+#   [1] VALUE_STRING        -> SAM method name ("makeConcatWithConstants")
+#   [2] VALUE_METHOD_TYPE   -> invokedType — return-type + arg-types of the
+#                              materialized concat call
+#   [3] VALUE_STRING        -> "recipe" — the literal segments interleaved
+#                              with placeholder chars:
+#                                U+0001 = a runtime argument from `uses`
+#                                U+0002 = a constant from the trailing
+#                                         encoded_array slots
+#   [4..N] VALUE_STRING / VALUE_INT / etc. -> constants spliced in for each
+#                                             U+0002 placeholder, in
+#                                             recipe order.
+#
+# A recognizer parses the recipe + uses + constants into the existing
+# `Stmt::StringConcat { dst, parts: Vec<ConcatPart> }` shape (the same IR
+# the pre-Java-9 StringBuilder peephole produces).
+
+toolchain = "javac"
+version = "21"
+construct = "string_concat_indy"
+discriminant_kind = "Recipe"
+outer_form = "invokedynamic StringConcatFactory.makeConcatWithConstants"
+arm_pattern = """
+recipe = "<literal>?(U+0001|U+0002)<literal>?(U+0001|U+0002)..."
+U+0001 -> ConcatPart::Var(insn.uses[next_arg_idx])
+U+0002 -> ConcatPart::Literal(stringify(call_site[const_slot_idx]))
+literal segment -> ConcatPart::Literal(segment)
+"""
+recovers = "Stmt::StringConcat { dst: $DST$, parts: [$PARTS$] }"
+
+[version_pin]
+javac = "21"
+d8 = "AGP 8.x with min_api >= 26"

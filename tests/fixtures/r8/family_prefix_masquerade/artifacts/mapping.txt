@@ -1,0 +1,49 @@
+# compiler: R8
+# compiler_version: 9.1.31
+# min_api: 1
+# common_typos_disable
+# {"id":"com.android.tools.r8.mapping","version":"2.2"}
+# pg_map_id: c5b09baafa2be9e22c759652d009f12893b457a6b371ad65fad093a9548edf26
+# pg_map_hash: SHA-256 c5b09baafa2be9e22c759652d009f12893b457a6b371ad65fad093a9548edf26
+androidx.adversarial.poc.Backdoor -> androidx.adversarial.poc.Backdoor:
+# {"id":"sourceFile","fileName":"Main.kt"}
+    59:59:void <init>() -> <init>
+    61:61:java.lang.String execute(int,java.lang.String) -> execute
+androidx.adversarial.poc.Main -> androidx.adversarial.poc.Main:
+# {"id":"sourceFile","fileName":"Main.kt"}
+    67:67:void <init>() -> <init>
+    68:68:void call01() -> call01
+    69:69:void call02() -> call02
+    70:70:void call03() -> call03
+    71:71:void call04() -> call04
+    72:72:void call05() -> call05
+    73:73:void call06() -> call06
+    74:74:void call07() -> call07
+    75:75:void call08() -> call08
+    76:76:void call09() -> call09
+    77:77:void call10() -> call10
+    78:78:void call11() -> call11
+    79:79:void call12() -> call12
+    80:80:void call13() -> call13
+    81:81:void call14() -> call14
+    82:82:void call15() -> call15
+    83:83:void call16() -> call16
+    84:84:void call17() -> call17
+    85:85:void call18() -> call18
+    86:86:void call19() -> call19
+    87:87:void call20() -> call20
+    88:88:void call21() -> call21
+    89:89:void call22() -> call22
+    90:90:void call23() -> call23
+    91:91:void call24() -> call24
+    92:92:void call25() -> call25
+androidx.adversarial.poc.Main$Companion -> androidx.adversarial.poc.Main$Companion:
+# {"id":"sourceFile","fileName":"Main.kt"}
+    0:0:void <init>(kotlin.jvm.internal.DefaultConstructorMarker) -> <init>
+    94:94:void <init>() -> <init>
+    97:97:void main(java.lang.String[]) -> main
+    98:98:void main(java.lang.String[]) -> main
+    99:99:void main(java.lang.String[]) -> main
+    100:100:void main(java.lang.String[]) -> main
+    101:101:void main(java.lang.String[]) -> main
+    102:102:void main(java.lang.String[]) -> main

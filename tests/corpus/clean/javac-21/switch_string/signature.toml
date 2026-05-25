@@ -1,0 +1,38 @@
+# Source-of-truth fingerprint for javac-21 lowering of `switch (String)`.
+#
+# javac 21 lowers `switch (String s) { case "a": ...; case "b": ...; }` to a
+# two-stage construct:
+#
+#   1. Outer `tableswitch(s.hashCode())` — one arm per distinct hashCode.
+#      Colliding arms (same hashCode) merge into one outer arm with an
+#      inner equals()-chain.
+#   2. Each outer arm: `equals(literal)` check + tag-store. On equals=true
+#      the tag is set to a unique small int identifying the original case.
+#   3. Inner `tableswitch(tag)` — dispatches to the user's case bodies.
+#
+# The recognizer in droidsaw-dex/src/signatures/javac21/switch_string.rs
+# matches this two-stage shape and lifts to `Stmt::MultiArm` with
+# `Discriminant::String(_)`.
+#
+# References:
+# - JLS §14.11 (the switch statement).
+# - droidsaw-dex/src/sugar.rs::reconstruct_string_switches (existing peephole;
+#   migrated to a Signature impl).
+
+toolchain = "javac"
+version = "21"
+construct = "switch_string"
+discriminant_kind = "String"
+outer_form = "tableswitch on String.hashCode()"
+arm_pattern = """
+[
+  Expr(InvokeVirtual String.equals literal=$LIT$ dst=$EQ$),
+  If(cond=$EQ$, then=Assign($TAG$=$N$), else=$NEXT_OR_DEFAULT$)
+]
+"""
+inner_form = "tableswitch on tag"
+recovers = "Stmt::MultiArm { discriminant: Discriminant::String(_), arms: [(ArmPattern::StringLiterals($LITS$), $BODY$), ...], default: $D$, provenance: Provenance { source_dialect: SourceDialect::Java(JavaVersion::V21), ... } }"
+
+[version_pin]
+javac = "21"
+d8 = "AGP 8.x"

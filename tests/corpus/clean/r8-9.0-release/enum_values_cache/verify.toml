@@ -1,0 +1,12 @@
+# Structural assertion for the enum-values-cache recogniser (Wave 2A).
+
+construct = "enum_values_cache"
+expected_transform = "EnumValuesCached"
+
+[expected]
+# After R8 caching, a static field of `Color[]` type should exist on
+# the holder class.
+cached_values_field_present = true
+# At least one of the three count methods should read the cached field
+# rather than calling Color.values() directly.
+field_read_sites_min = 1

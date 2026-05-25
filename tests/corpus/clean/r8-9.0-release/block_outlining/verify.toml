@@ -1,0 +1,22 @@
+# Structural assertion for the block-outlining recogniser (Wave 2A).
+#
+# Empirical post-R8 shape (PCs / method-ids / helper class name) will be
+# populated when Wave 2A lands and runs the recogniser against this
+# fixture. Until then this file documents the EXPECTED assertion shape
+# without committing to specific concrete values — R8 9.0's outliner
+# output is deterministic for a given input but the exact synthetic
+# helper id varies per build.
+
+construct = "block_outlining"
+expected_transform = "BlockOutlined"
+
+# Wave 2A populates the concrete assertions:
+#   - synthetic_helper_class_descriptor (e.g. "LX/0$$;")
+#   - synthetic_helper_method_name      (e.g. "$$private")
+#   - trampoline_method_count           (≥ 2 — methodA/B/C should
+#                                         collapse into trampolines
+#                                         calling the helper)
+
+[expected]
+trampoline_method_count_min = 2
+helper_in_renamed_namespace = true

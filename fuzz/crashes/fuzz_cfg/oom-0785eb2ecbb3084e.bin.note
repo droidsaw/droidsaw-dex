@@ -1,0 +1,15 @@
+stage: cfg (amplification; dex-hardening-sweep fork-mode campaign)
+kind: OOM (ASAN out-of-memory — allocator request ~170.9 GiB, parse_class_defs)
+site: src/parser.rs:371 `Vec::with_capacity(class_defs_size)` — the
+  class_defs count field from the DEX header drives a `Vec::with_capacity`
+  without being bounded against `data.len()`. 131-byte input mutates the
+  class_defs_size field to a huge value.
+repro: cargo fuzz run fuzz_cfg fuzz/crashes/fuzz_cfg/oom-0785eb2ecbb3084e.bin
+size: 131 bytes
+allocation: 0x27ec500000 bytes (~170.9 GiB)
+
+Representative of the 72-crash / 6652-OOM cluster observed in the fork-mode
+15-min campaign; all sampled (5 of 72) trace to the same site. Filed for
+`dex-resource-limits` — pin the concrete source line dex-resource-limits
+needs to cap (bound `class_defs_size` and every other header count field
+against `data.len()` before the capacity allocation).

@@ -1,0 +1,18 @@
+# Source-of-truth fingerprint for R8 9.0 method-inlining.
+#
+# R8 inlines small leaf methods at every call site. When inlining
+# eliminates ALL call sites the helper is removed from the DEX entirely.
+# Without an R8 mapping file the original name is unrecoverable; the
+# recogniser is annotation-only.
+
+toolchain = "r8"
+version = "9.0"
+construct = "method_inlining"
+discriminant_kind = "InlinedCallSite"
+outer_form = "missing-helper-method"
+arm_pattern = "expanded call-site body where a helper call used to be"
+recovers = "Stmt with R8Origin { variant: R8Transform::MethodInlined, source_pc: Some(_), synthetic_helper: None, confidence: 80 } — annotation only; original name unrecoverable without --mapping-file."
+
+[version_pin]
+javac = "21"
+d8 = "AGP 8+"

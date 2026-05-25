@@ -1,0 +1,123 @@
+[package]
+name = "droidsaw-dex-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+# Mirrors the test-only proguard dep from `../Cargo.toml`. The fuzz
+# target `fuzz_proguard_mapping` exercises the parser's panic
+# surface; the parent crate's `scripts/check-proguard-test-only.sh`
+# discipline gauge permits `proguard` in fuzz/ alongside tests/
+# because fuzz is test-tooling, not production.
+proguard = "=5.10.3"
+
+[dependencies.droidsaw-dex]
+path = ".."
+
+[[bin]]
+name = "fuzz_parser"
+path = "fuzz_targets/fuzz_parser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_decode_debug_info"
+path = "fuzz_targets/fuzz_decode_debug_info.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_opcode_decode"
+path = "fuzz_targets/fuzz_opcode_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_cfg"
+path = "fuzz_targets/fuzz_cfg.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_ssa"
+path = "fuzz_targets/fuzz_ssa.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_emit_roundtrip"
+path = "fuzz_targets/fuzz_emit_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_enum_cross_class"
+path = "fuzz_targets/fuzz_enum_cross_class.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_protector_recognizer"
+path = "fuzz_targets/fuzz_protector_recognizer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_emulator"
+path = "fuzz_targets/fuzz_emulator.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parser_differential"
+path = "fuzz_targets/parser_differential.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cfg_differential"
+path = "fuzz_targets/cfg_differential.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_proguard_mapping"
+path = "fuzz_targets/fuzz_proguard_mapping.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_diag_collectors"
+path = "fuzz_targets/fuzz_diag_collectors.rs"
+test = false
+doc = false
+bench = false
+
+# Standalone workspace so cargo-fuzz does not walk up into the parent crate.
+[workspace]
+members = ["."]
+
+# The parent `droidsaw` workspace `Cargo.toml` applies
+# the same patch. This fuzz crate declares `[workspace]` to stay out of that
+# workspace (fuzz targets aren't a workspace member), so we have to repeat the
+# patch here, otherwise `droidsaw-dex` would pull `droidsaw-common` from
+# crates.io — which is stale relative to what `droidsaw-dex` actually calls.
+[patch.crates-io]
+droidsaw-common = { path = "../../droidsaw-common" }

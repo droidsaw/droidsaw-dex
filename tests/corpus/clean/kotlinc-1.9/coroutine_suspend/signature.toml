@@ -1,0 +1,71 @@
+# Source-of-truth fingerprint for kotlinc-1.9.22 lowering of `suspend fun`
+# state machine.
+#
+# Audit finding #10: state machine lives in the TOP-LEVEL wrapper method,
+# NOT in the inner `ContinuationImpl` class. The inner class is a stub
+# holding `int I$0 / Object result / int label` fields plus a delegating
+# `invokeSuspend` that calls back into the wrapper with the suspend-bit set.
+#
+# Wrapper-method shape:
+#
+# 1. Continuation-resume preamble (~50 instructions):
+#      aload <cont>
+#      instanceof <inner-state-machine-class>
+#      ifeq <new-cont-path>
+#      <reuse-existing-cont>: getfield label, mask off 0x80000000, set
+#      <new-cont-path>: new <inner-class>, invokespecial <init>(Continuation)
+#
+# 2. Main dispatch:
+#      getfield <inner>.label:I
+#      tableswitch { 0: state0; 1: state1; ...; default: <illegalstate> }
+#      default: athrow IllegalStateException(
+#         "call to 'resume' before 'invoke' with coroutine")
+#
+# 3. Per-state body:
+#      invokestatic kotlin/ResultKt.throwOnFailure
+#      <restore captured locals from getfield I$0> (state>0)
+#      <arm body>
+#      putfield label = next_state
+#      <save locals to I$0>
+#      invokestatic <suspend-callee>(... Continuation)
+#      if_acmpne <continue>; areturn COROUTINE_SUSPENDED otherwise
+#
+# Strong single-symbol discriminator: the literal string
+#   "call to 'resume' before 'invoke' with coroutine"
+# in the dispatch default. Java code never emits this constant.
+#
+# OQ §5 RESOLVED IN AUDIT 2026-04-30: recognizer fits `DexSigInput<'a>`
+# (all signals are pre-structuring — class-relation + method signature
+# + instruction-level patterns + string-pool literal). No follow-up split.
+#
+# **Out of scope** (per Brief Out-of-scope §1): full `suspend fun` lift-back
+# is deferred to a separate stream. This recognizer TAGS the region as
+# `Provenance { recognized_as: KotlinSuspendStateMachine, ... }` and emit
+# produces a banner + unfolded form. The `coroutine_suspend/*` corpus is
+# **roundtrip-gate-EXEMPT** (Brief Acceptance gates).
+#
+# References:
+# - droidsaw-dex/src/signatures/kotlinc19/coroutine_suspend.rs.
+
+toolchain = "kotlinc"
+version = "1.9.22"
+construct = "coroutine_suspend"
+discriminant_kind = "ContinuationLabel"
+outer_form = "wrapper-method state machine: instanceof <inner ContinuationImpl> + label-bitmask preamble + getfield label + tableswitch"
+arm_pattern = """
+[
+  Invokestatic(ResultKt.throwOnFailure),
+  $RESTORE_CAPTURED$,
+  $ARM_BODY$,
+  Putfield($INNER$.label = $NEXT_STATE$),
+  Invokestatic($SUSPEND_CALLEE$),
+  IfAcmpne($CONTINUE$),
+  Areturn(COROUTINE_SUSPENDED),
+]
+"""
+inner_form = "default-arm athrow IllegalStateException(\"call to 'resume' before 'invoke' with coroutine\")"
+recovers = "Stmt::Unrecognized { reason: SuspendStateMachine, raw: <wrapper-method-body>, provenance: Provenance { source_dialect: SourceDialect::Kotlin(KotlinVersion::V19), recognized_as: KotlinSuspendStateMachine, ... } } /* full lift to `suspend fun` syntax deferred per Brief Out-of-scope §1 */"
+
+[version_pin]
+kotlinc = "1.9.22"
+d8 = "AGP 8.x"
