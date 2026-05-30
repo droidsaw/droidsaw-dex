@@ -395,6 +395,31 @@ pub enum CodeItemInvariantViolation {
         try_idx: u16,
         start_addr: u32,
     },
+    /// Two consecutive `try_item`s are not ordered by ascending
+    /// `start_addr` with non-overlapping ranges: for the previous try,
+    /// `start_addr + insn_count` (recorded here as `prev_end`, computed
+    /// from the original on-disk values with saturating arithmetic)
+    /// exceeds this try's `start_addr`. DEX spec §"code_item": the
+    /// `tries` array must be ordered by `start_addr` and the covered
+    /// ranges must not overlap; ART's verifier rejects out-of-order /
+    /// overlapping tries. Left unchecked, an overlap lets the CFG
+    /// builder attribute the same dex_pc to two handler lists and
+    /// double-emit exception edges (inflated handler counts visible to
+    /// detectors), and a canonical-sort emit would change byte layout
+    /// and break round-trip equality on non-canonical input.
+    ///
+    /// `try_idx` is the index of the offending (second) try. Recorded
+    /// once per `code_item` (the first violating pair) to bound
+    /// adversarial spam on a fully-reversed try table — "this method's
+    /// try table is unsorted/overlapping from try N" is the
+    /// load-bearing signal. Tolerant-parse: every try is retained as
+    /// parsed (each individually range-clamped); only the ordering
+    /// relationship between tries is flagged here.
+    TryItemsUnsortedOrOverlapping {
+        try_idx: u16,
+        prev_end: u32,
+        start_addr: u32,
+    },
     /// `ins_size > registers_size`. The `saturating_sub` at `ssa.rs:393`
     /// (`first_param_reg = registers_size.saturating_sub(ins_size)`)
     /// silently produces 0, attributing all parameters to overlapping
@@ -1663,6 +1688,14 @@ pub fn parse_code_item(data: &[u8], code_off: u32) -> Result<CodeItem> {
                 ),
             })?;
 
+        // §H-4 ordering gauge: carry the previous try's original on-disk
+        // end (`start_addr + insn_count`, saturating) to detect the first
+        // pair that is unsorted or overlapping. Independent of the
+        // per-try range clamp below (which mutates the in-IR `insn_count`
+        // but never `start_addr`).
+        let mut try_prev_end: Option<u32> = None;
+        let mut try_order_recorded = false;
+
         for i in 0..tries_count {
             let i8 = safe_mul(i, 8, "parse_code_item:try:i*8")?;
             let t_off = safe_add(tries_off, i8, "parse_code_item:try:t_off")?;
@@ -1688,6 +1721,26 @@ pub fn parse_code_item(data: &[u8], code_off: u32) -> Result<CodeItem> {
                     })?;
 
             let try_idx_u16: u16 = u16::try_from(i).unwrap_or(u16::MAX);
+
+            // §H-4: tries must be ordered by ascending start_addr and
+            // non-overlapping. Compare this try's start_addr against the
+            // previous try's original on-disk end; record the first
+            // violating pair only. Runs before the empty-region skip so
+            // every on-disk try participates in the ordering relation.
+            let this_end = start_addr.saturating_add(u32::from(insn_count));
+            if let Some(prev_end) = try_prev_end {
+                if start_addr < prev_end && !try_order_recorded {
+                    invariant_violations.push(
+                        CodeItemInvariantViolation::TryItemsUnsortedOrOverlapping {
+                            try_idx: try_idx_u16,
+                            prev_end,
+                            start_addr,
+                        },
+                    );
+                    try_order_recorded = true;
+                }
+            }
+            try_prev_end = Some(this_end);
 
             // Empty-try-region gauge: per DEX spec §6.try_item,
             // `start_addr` is the dex_pc of the FIRST covered
@@ -2327,6 +2380,90 @@ mod tests {
     // regression check. The empty-region path is the
     // focus and the 2 tests above pin both `start_addr = 0` and
     // `start_addr ≠ 0` shapes.
+
+    /// Build a `code_item` with two non-empty `try_item`s at the given
+    /// `(start_addr, insn_count)` pairs, both pointing at a single
+    /// catch-all `encoded_catch_handler` (handler_off = 1, the first
+    /// handler past the one-byte handlers_size uleb). `insns_size = 8`
+    /// code units keeps both tries in range so the per-try range check
+    /// stays silent and only the ordering relation is under test.
+    fn make_code_item_two_tries(t0: (u32, u16), t1: (u32, u16)) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&1u16.to_le_bytes()); // registers_size
+        buf.extend_from_slice(&0u16.to_le_bytes()); // ins_size
+        buf.extend_from_slice(&0u16.to_le_bytes()); // outs_size
+        buf.extend_from_slice(&2u16.to_le_bytes()); // tries_size = 2
+        buf.extend_from_slice(&0u32.to_le_bytes()); // debug_info_off
+        buf.extend_from_slice(&8u32.to_le_bytes()); // insns_size = 8 code units
+        buf.extend_from_slice(&[0u8; 16]); // insns: 8 code units (nops)
+        for (start, count) in [t0, t1] {
+            buf.extend_from_slice(&start.to_le_bytes());
+            buf.extend_from_slice(&count.to_le_bytes());
+            buf.extend_from_slice(&1u16.to_le_bytes()); // handler_off = 1
+        }
+        // encoded_catch_handler_list: handlers_size = 1.
+        buf.push(0x01);
+        // encoded_catch_handler at rel offset 1: size = 0 (catch-all only).
+        buf.push(0x00);
+        // catch_all_addr = 0 (uleb).
+        buf.push(0x00);
+        buf
+    }
+
+    #[test]
+    fn try_items_unsorted_start_addr_records_violation() {
+        // try0 start_addr=4, try1 start_addr=0 — descending, so the
+        // table is not sorted by start_addr.
+        let code = parse_code_item_helper(&make_code_item_two_tries((4, 2), (0, 2)));
+        assert!(
+            code.invariant_violations.iter().any(|v| matches!(
+                v,
+                CodeItemInvariantViolation::TryItemsUnsortedOrOverlapping {
+                    try_idx: 1,
+                    prev_end: 6,
+                    start_addr: 0,
+                }
+            )),
+            "expected TryItemsUnsortedOrOverlapping(try_idx=1, prev_end=6, start_addr=0); got {:?}",
+            code.invariant_violations
+        );
+    }
+
+    #[test]
+    fn try_items_overlapping_records_violation() {
+        // try0 covers [0, 4), try1 starts at 2 — ascending start_addr but
+        // overlapping: try0's end (4) is past try1's start (2).
+        let code = parse_code_item_helper(&make_code_item_two_tries((0, 4), (2, 2)));
+        assert!(
+            code.invariant_violations.iter().any(|v| matches!(
+                v,
+                CodeItemInvariantViolation::TryItemsUnsortedOrOverlapping {
+                    try_idx: 1,
+                    prev_end: 4,
+                    start_addr: 2,
+                }
+            )),
+            "expected TryItemsUnsortedOrOverlapping(try_idx=1, prev_end=4, start_addr=2); got {:?}",
+            code.invariant_violations
+        );
+    }
+
+    #[test]
+    fn try_items_sorted_non_overlapping_clean() {
+        // try0 covers [0, 2), try1 starts at 2 — abutting but not
+        // overlapping (prev_end == next start is allowed).
+        let code = parse_code_item_helper(&make_code_item_two_tries((0, 2), (2, 2)));
+        assert!(
+            !code.invariant_violations.iter().any(|v| matches!(
+                v,
+                CodeItemInvariantViolation::TryItemsUnsortedOrOverlapping { .. }
+            )),
+            "abutting sorted tries must not flag ordering; got {:?}",
+            code.invariant_violations
+        );
+        // And both tries reached the in-IR vec (non-empty, in-range).
+        assert_eq!(code.tries.len(), 2);
+    }
 
     mod decode_single_proptests {
         //! Structural proptests over [`decode_single`].

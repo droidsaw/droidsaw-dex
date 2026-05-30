@@ -137,6 +137,21 @@ pub const FINDING_ID_DEX_TRY_ITEM_RANGE_INVALID: &str = "DEX_TRY_ITEM_RANGE_INVA
 /// control flow → audit-spoof primitive (low severity).
 pub const FINDING_ID_DEX_TRY_ITEM_EMPTY_REGION: &str = "DEX_TRY_ITEM_EMPTY_REGION";
 
+/// Stable finding id for a DEX `code_item` whose `try_item`s are not
+/// ordered by ascending `start_addr` with non-overlapping ranges
+/// (DEX spec §"code_item"). The parser records the first violating
+/// pair via
+/// [`crate::decode::CodeItemInvariantViolation::TryItemsUnsortedOrOverlapping`].
+///
+/// Overlapping tries let the CFG builder attribute the same dex_pc to
+/// two handler lists and double-emit exception edges (inflated handler
+/// counts visible to detectors); out-of-order tries break the
+/// canonical-layout assumption a re-emitting reader makes. **One
+/// Finding per offending `code_item`** (first violating pair), bounding
+/// adversarial spam on a fully-reversed try table.
+pub const FINDING_ID_DEX_TRY_ITEMS_UNSORTED_OR_OVERLAPPING: &str =
+    "DEX_TRY_ITEMS_UNSORTED_OR_OVERLAPPING";
+
 /// Stable finding id for a DEX `code_item` whose
 /// `ins_size > registers_size`.
 ///
@@ -632,6 +647,24 @@ pub fn collect_code_item_findings(dex: &DexFile) -> Vec<Finding> {
                         Layer::Dex,
                         Severity::Low,
                         format!("try_idx={try_idx} start_addr={start_addr} insn_count=0"),
+                    )
+                    .with_extra(format!("try_idx={try_idx}"));
+                    finding.confidence = Confidence::Verified;
+                    out.push(finding);
+                }
+                decode::CodeItemInvariantViolation::TryItemsUnsortedOrOverlapping {
+                    try_idx,
+                    prev_end,
+                    start_addr,
+                } => {
+                    let mut finding = Finding::new(
+                        FINDING_ID_DEX_TRY_ITEMS_UNSORTED_OR_OVERLAPPING,
+                        Layer::Dex,
+                        Severity::Medium,
+                        format!(
+                            "try_idx={try_idx} start_addr={start_addr} < \
+                             prev_end={prev_end} (tries unsorted or overlapping)"
+                        ),
                     )
                     .with_extra(format!("try_idx={try_idx}"));
                     finding.confidence = Confidence::Verified;
