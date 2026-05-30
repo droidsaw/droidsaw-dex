@@ -1,0 +1,10 @@
+stage: emit (round-trip: parse -> emit_dex -> re-parse)
+panic: content equivalence violated post round-trip (string declared_chars 100 vs recomputed 6)
+site: src/emit_dex.rs emit_string_pool / emit_string_pool_preserve_layout
+repro: cargo fuzz run fuzz_emit_roundtrip fuzz/crashes/fuzz_emit_roundtrip/7f59a818b382
+
+Emit recomputed each string's utf16_size from its MUTF-8 bytes instead of
+preserving the parsed declared_chars. A malformed input declaring 100 chars
+for a 6-char string ("ex\n041") re-parsed with a different utf16_size,
+breaking the ContentEquiv round-trip invariant. Fixed by writing the parsed
+declared_chars verbatim in both string-pool emit paths.

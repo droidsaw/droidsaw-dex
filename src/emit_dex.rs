@@ -1083,7 +1083,9 @@ fn emit_dex_inner_preserve_layout(
         )?;
         type_idxs.push(idx);
     }
-    let raw_bytes_owned: Vec<&[u8]> = dex.strings.iter().map(crate::DexString::raw_bytes).collect();
+    let string_pairs: Vec<(u32, &[u8])> = dex.strings.iter()
+        .map(|s| (s.declared_chars(), s.raw_bytes()))
+        .collect();
     // Compute string_data section size from input map_entries (next-section
     // offset minus string_data start). Needed for the preserve variant
     // to pre-size the blob.
@@ -1102,9 +1104,9 @@ fn emit_dex_inner_preserve_layout(
             .map(|e| e.offset)
             .unwrap_or(dex.header.file_size);
         let sd_size = next_off.saturating_sub(sd_base);
-        emit_string_pool_preserve_layout(&raw_bytes_owned, &dex.string_data_offs, sd_base, sd_size)?
+        emit_string_pool_preserve_layout(&string_pairs, &dex.string_data_offs, sd_base, sd_size)?
     } else {
-        emit_string_pool(&raw_bytes_owned)
+        emit_string_pool(&string_pairs)
     };
     let type_id_items = {
         let sorted = NonDecreasing::from_verified(type_idxs).map_err(|_| {
@@ -2025,8 +2027,10 @@ fn emit_dex_inner(
     // empty now constructs full `DexString::Decoded` entries with
     // pre-populated `raw_bytes` (see test helper in this file +
     // `obfuscation_features::tests::push_raw_dex_string`).
-    let raw_bytes_owned: Vec<&[u8]> = dex.strings.iter().map(crate::DexString::raw_bytes).collect();
-    let (string_id_items, string_data_items) = emit_string_pool(&raw_bytes_owned);
+    let string_pairs: Vec<(u32, &[u8])> = dex.strings.iter()
+        .map(|s| (s.declared_chars(), s.raw_bytes()))
+        .collect();
+    let (string_id_items, string_data_items) = emit_string_pool(&string_pairs);
     // Type idxs are `StringIdx` values; their numerical (u32) order
     // matches the MUTF-8 byte order of their referenced strings on
     // spec-compliant DEX (string_ids is sorted in MUTF-8 order, and
@@ -3168,25 +3172,27 @@ fn push_cesu8_units(out: &mut Vec<u16>, bytes: &[u8]) {
 /// Caller contract: `string_raw_bytes` must be in the on-disk order
 /// (which the parser preserves).
 ///
-/// Each entry produces: ULEB128(utf16_unit_count) || raw_bytes || 0x00.
-/// The utf16_unit_count is derived by walking the MUTF-8 bytes and
-/// counting code units emitted (NOT codepoints — supplementary-plane
-/// chars count as 2 surrogate halves per DEX spec §7.5).
+/// Each entry produces: ULEB128(declared_chars) || raw_bytes || 0x00.
+/// `declared_chars` is the parsed `utf16_size` carried verbatim from the
+/// input, NOT recomputed from the bytes: an adversarial input whose declared
+/// count disagrees with its actual decoded length must round-trip unchanged
+/// (parse -> emit -> parse), which the `ContentEquiv` invariant compares.
+/// Each pair is `(declared_chars, raw_bytes)`.
 #[allow(
     clippy::as_conversions,
     clippy::cast_possible_truncation,
     reason = "PROOF: `data_items.len() as u32` — data_items accumulates one string_data_item per string in the pool; DEX file-format spec stores string_ids_size as u32, bounding the total string pool byte length to u32::MAX. Narrowing usize → u32 is exact for any spec-compliant DEX."
 )]
 pub fn emit_string_pool(
-    string_raw_bytes: &[&[u8]],
+    strings: &[(u32, &[u8])],
 ) -> (Vec<u8>, Vec<u8>) {
-    let mut id_items = Vec::with_capacity(alloc_cap(string_raw_bytes.len().saturating_mul(4)));
+    let mut id_items = Vec::with_capacity(alloc_cap(strings.len().saturating_mul(4)));
     let mut data_items: Vec<u8> = Vec::new();
 
-    for &bytes in string_raw_bytes.iter() {
+    for &(declared_chars, bytes) in strings.iter() {
         let rel_off = data_items.len() as u32;
         id_items.extend_from_slice(&rel_off.to_le_bytes());
-        write_uleb128(&mut data_items, utf16_unit_count_from_mutf8(bytes));
+        write_uleb128(&mut data_items, declared_chars);
         data_items.extend_from_slice(bytes);
         data_items.push(0x00);
     }
@@ -3217,22 +3223,22 @@ pub fn emit_string_pool(
 /// gap on inputs whose string_data physical order doesn't match the
 /// StringIdx sequential order.
 pub fn emit_string_pool_preserve_layout(
-    string_raw_bytes: &[&[u8]],
+    strings: &[(u32, &[u8])],
     input_data_offs: &[u32],
     string_data_base: u32,
     section_size: u32,
 ) -> Result<(Vec<u8>, Vec<u8>), DexEmitError> {
-    if string_raw_bytes.len() != input_data_offs.len() {
+    if strings.len() != input_data_offs.len() {
         return Err(DexEmitError::UnrepresentableIR {
-            why: "emit_string_pool_preserve_layout: string_raw_bytes and input_data_offs length mismatch",
+            why: "emit_string_pool_preserve_layout: strings and input_data_offs length mismatch",
         });
     }
-    let mut id_items = Vec::with_capacity(alloc_cap(string_raw_bytes.len().saturating_mul(4)));
+    let mut id_items = Vec::with_capacity(alloc_cap(strings.len().saturating_mul(4)));
     let section_size_usize = usize::try_from(section_size).map_err(|_| DexEmitError::UnrepresentableIR {
         why: "emit_string_pool_preserve_layout: section_size exceeds usize",
     })?;
     let mut data_items = vec![0u8; section_size_usize];
-    for (i, &bytes) in string_raw_bytes.iter().enumerate() {
+    for (i, &(declared_chars, bytes)) in strings.iter().enumerate() {
         let abs_off = input_data_offs[i];
         id_items.extend_from_slice(&abs_off.to_le_bytes());
         let rel_u32 = abs_off.checked_sub(string_data_base).ok_or(DexEmitError::UnrepresentableIR {
@@ -3241,10 +3247,11 @@ pub fn emit_string_pool_preserve_layout(
         let rel = usize::try_from(rel_u32).map_err(|_| DexEmitError::UnrepresentableIR {
             why: "emit_string_pool_preserve_layout: rel offset exceeds usize",
         })?;
-        // Encode uleb128(char_count) + raw_bytes + NUL into a scratch
-        // buffer, then place at the preserved offset.
+        // Encode uleb128(declared_chars) + raw_bytes + NUL into a scratch
+        // buffer, then place at the preserved offset. declared_chars is the
+        // parsed utf16_size carried verbatim, not recomputed from the bytes.
         let mut scratch = Vec::with_capacity(bytes.len().saturating_add(6));
-        write_uleb128(&mut scratch, utf16_unit_count_from_mutf8(bytes));
+        write_uleb128(&mut scratch, declared_chars);
         scratch.extend_from_slice(bytes);
         scratch.push(0x00);
         let end = rel.saturating_add(scratch.len());
@@ -3256,37 +3263,6 @@ pub fn emit_string_pool_preserve_layout(
         data_items[rel..end].copy_from_slice(&scratch);
     }
     Ok((id_items, data_items))
-}
-
-/// Count UTF-16 code units in a MUTF-8 byte sequence without
-/// allocating a Rust `String`. Mirrors DEX spec §7.5 `utf16_size`
-/// semantics: each 1-byte ASCII char is 1 code unit, each 2-byte
-/// MUTF-8 (including `C0 80` for U+0000) is 1 code unit, each 3-byte
-/// MUTF-8 is 1 code unit (this includes surrogate halves, which are
-/// 1 code unit each — two surrogate halves = 2 code units = 1
-/// supplementary-plane codepoint).
-///
-/// Assumes well-formed MUTF-8 (parser already validated). Malformed
-/// bytes count conservatively (skip-1) — produces wrong count but
-/// doesn't panic.
-fn utf16_unit_count_from_mutf8(bytes: &[u8]) -> u32 {
-    let mut count: u32 = 0;
-    let mut i = 0;
-    while i < bytes.len() {
-        let b0 = bytes[i];
-        let step = if b0 < 0x80 {
-            1
-        } else if b0 & 0xE0 == 0xC0 {
-            2
-        } else if b0 & 0xF0 == 0xE0 {
-            3
-        } else {
-            1 // malformed byte — skip
-        };
-        count = count.saturating_add(1);
-        i = i.saturating_add(step);
-    }
-    count
 }
 
 // ── Type pool emit (DEX §7.6 type_id_item) ──────────────────────────
@@ -6340,8 +6316,8 @@ mod tests {
             .collect()
     }
 
-    fn as_slice_refs(raw: &[Vec<u8>]) -> Vec<&[u8]> {
-        raw.iter().map(Vec::as_slice).collect()
+    fn as_pairs<'a>(raw: &'a [Vec<u8>], declared: &[u32]) -> Vec<(u32, &'a [u8])> {
+        declared.iter().copied().zip(raw.iter().map(Vec::as_slice)).collect()
     }
 
     #[test]
@@ -6354,7 +6330,7 @@ mod tests {
     #[test]
     fn emit_string_pool_single_ascii() {
         let raw = to_raw_bytes(&["hi"]);
-        let (ids, data) = emit_string_pool(&as_slice_refs(&raw));
+        let (ids, data) = emit_string_pool(&as_pairs(&raw, &[2]));
         // id_items: one u32 LE = 0 (first string_data_item at start of data section)
         assert_eq!(ids, vec![0x00, 0x00, 0x00, 0x00]);
         // data: ULEB128(2) = 0x02, then "hi" (0x68 0x69), then 0x00 terminator.
@@ -6365,7 +6341,7 @@ mod tests {
     fn emit_string_pool_three_ascii_canonical_order() {
         // Caller responsible for canonical order; pass pre-sorted.
         let raw = to_raw_bytes(&["apple", "bat", "cat"]);
-        let (ids, data) = emit_string_pool(&as_slice_refs(&raw));
+        let (ids, data) = emit_string_pool(&as_pairs(&raw, &[5, 3, 3]));
 
         // id_items: 3 entries × 4 bytes = 12 bytes.
         assert_eq!(ids.len(), 12);
@@ -6391,12 +6367,42 @@ mod tests {
     #[test]
     fn emit_string_pool_with_null_byte_uses_mutf8_c080() {
         let raw = to_raw_bytes(&["a\0b"]);
-        let (_ids, data) = emit_string_pool(&as_slice_refs(&raw));
+        let (_ids, data) = emit_string_pool(&as_pairs(&raw, &[3]));
         // utf16_size: 3 code units ('a', NUL, 'b')
         // MUTF-8 body: 0x61 | 0xC0 0x80 | 0x62 = 4 bytes
         // Plus terminator: 5 bytes
         // Plus ULEB(3) prefix: 1 byte → 6 bytes total.
         assert_eq!(data, vec![0x03, 0x61, 0xC0, 0x80, 0x62, 0x00]);
+    }
+
+    #[test]
+    fn emit_string_pool_preserves_declared_count_over_recomputed() {
+        // Round-trip guard: the parsed utf16_size (declared_chars) can disagree
+        // with the value recomputed from the bytes on malformed input. Emit must
+        // write the parsed count verbatim — otherwise parse -> emit -> parse
+        // changes the string and the ContentEquiv invariant breaks (the
+        // fuzz_emit_roundtrip finding). "ex\n041" is 6 bytes / 6 utf16 units,
+        // but here the input declared 100.
+        let raw = b"ex\n041";
+        let (_ids, data) = emit_string_pool(&[(100, raw.as_slice())]);
+        // ULEB128(100) = 0x64; then the 6 raw bytes verbatim; then NUL.
+        // NOT 0x06 (the recomputed count) — that was the round-trip bug.
+        assert_eq!(data, vec![0x64, b'e', b'x', b'\n', b'0', b'4', b'1', 0x00]);
+    }
+
+    #[test]
+    fn emit_string_pool_preserve_layout_preserves_declared_count() {
+        // Same guard for the layout-preserving path (it recomputed too).
+        let raw = b"ex\n041";
+        let (ids, data) = emit_string_pool_preserve_layout(
+            &[(100, raw.as_slice())],
+            &[0], // input_data_off
+            0,    // string_data_base
+            16,   // section_size: >= ULEB(1) + 6 bytes + NUL
+        )
+        .expect("emit");
+        assert_eq!(&ids[0..4], &[0, 0, 0, 0]);
+        assert_eq!(&data[0..8], &[0x64, b'e', b'x', b'\n', b'0', b'4', b'1', 0x00]);
     }
 
     // ── emit_type_pool ──────────────────────────────────────────────
