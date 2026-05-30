@@ -24,8 +24,11 @@ use super::DexFile;
 ///
 /// ## What is compared
 ///
-/// - `strings`, `type_descriptors`, `fields`, `methods` — pool
-///   contents, positional equality
+/// - `strings` — pool contents, positional equality on the
+///   `(declared_chars, raw_bytes)` pair `emit_string_pool` serializes;
+///   `had_terminator` provenance is excluded (see the inline note in `eq`)
+/// - `type_descriptors`, `fields`, `methods` — pool contents,
+///   positional equality
 /// - `class_defs.len()` — class count (individual `ClassDefItem`s
 ///   carry layout offsets that legitimately differ across emit;
 ///   content comparison at this level would require a layout-aware
@@ -40,6 +43,9 @@ use super::DexFile;
 /// - BTreeMap keys within each subsection map — original on-disk
 ///   offsets that emit rewrites
 /// - Per-`ClassDefItem` offset fields (annotations_off etc)
+/// - `DexString::had_terminator` — on-disk-malformation provenance the
+///   validity-normalizing emitter does not reproduce (it always writes
+///   the `0x00` terminator), so it is not a round-trip content property
 ///
 /// For deeper content-level equivalence (walking inside each
 /// subsection to compare values), extend with a separate
@@ -55,9 +61,28 @@ impl<'a> PartialEq for ContentEquiv<'a> {
         let a = self.0;
         let b = other.0;
 
-        // Pool content — exact equality (no layout fields).
-        if a.strings != b.strings
-            || a.type_descriptors != b.type_descriptors
+        // String pool — compare exactly the (declared_chars, raw_bytes) pair
+        // that `emit_string_pool` serializes per entry. `had_terminator` is
+        // intentionally NOT compared: it is on-disk-malformation provenance
+        // (the parser sets it `false` and extends-to-EOF when a string's data
+        // runs to EOF without a `0x00` terminator), not string content. The
+        // emitter canonicalizes it — `emit_string_pool` always writes the
+        // terminator — so a truncated-trailing-string input faithfully round-
+        // trips its bytes yet re-parses as `had_terminator: true`, which the
+        // derived `DexString` `PartialEq` would otherwise report as a content
+        // divergence. Comparing `raw_bytes` also covers the decoded view: `s`,
+        // `lossy_str`, `decode_error`, and the variant are all deterministic
+        // functions of `raw_bytes`, re-derived identically on re-parse.
+        if a.strings.len() != b.strings.len()
+            || a.strings.iter().zip(b.strings.iter()).any(|(sa, sb)| {
+                sa.declared_chars() != sb.declared_chars() || sa.raw_bytes() != sb.raw_bytes()
+            })
+        {
+            return false;
+        }
+
+        // Remaining pools — derived equality (no provenance-only fields).
+        if a.type_descriptors != b.type_descriptors
             || a.fields != b.fields
             || a.methods != b.methods
         {
@@ -158,5 +183,83 @@ impl<'a> PartialEq for ContentEquiv<'a> {
         }
 
         true
+    }
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test"
+)]
+mod tests {
+    use super::*;
+    use crate::DexString;
+
+    const FIXTURE: &[u8] =
+        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/classes.dex"));
+
+    fn first_decoded_idx(dex: &DexFile) -> usize {
+        dex.strings
+            .iter()
+            .position(|s| matches!(s, DexString::Decoded { .. }))
+            .expect("fixture has at least one cleanly-decoded string")
+    }
+
+    /// `had_terminator` is round-trip *provenance*, not content: two `DexFile`s
+    /// that differ ONLY in one string's `had_terminator` must be
+    /// `ContentEquiv`-equal. This models the truncated-trailing-string round-
+    /// trip — emit canonicalizes a missing terminator (parse sees
+    /// `had_terminator: false`, emit writes the `0x00`, re-parse sees
+    /// `had_terminator: true`). Red before the provenance-exclusion fix (the
+    /// derived `DexString` `PartialEq` saw the flag); green after.
+    #[test]
+    fn content_equiv_ignores_had_terminator_flip() {
+        let dex_a = DexFile::parse(FIXTURE, None).expect("fixture parses");
+        let mut dex_b = DexFile::parse(FIXTURE, None).expect("fixture parses");
+        let idx = first_decoded_idx(&dex_a);
+
+        // Flip had_terminator only; declared_chars + raw_bytes untouched.
+        match dex_b.strings.get_mut(idx).expect("same-length pool") {
+            DexString::Decoded { had_terminator, .. }
+            | DexString::MalformedMutf8 { had_terminator, .. } => {
+                *had_terminator = !*had_terminator;
+            }
+        }
+
+        // Precondition: the flip really does perturb the derived DexString eq...
+        assert_ne!(
+            dex_a.strings, dex_b.strings,
+            "precondition: had_terminator flip must perturb derived DexString eq"
+        );
+        // ...yet ContentEquiv treats them as round-trip equivalent.
+        assert_eq!(
+            ContentEquiv(&dex_a),
+            ContentEquiv(&dex_b),
+            "had_terminator is provenance, not content — must not break round-trip equivalence"
+        );
+    }
+
+    /// Negative control: the relaxation is surgical. Perturbing a real content
+    /// field (`declared_chars`) on one string MUST still register as divergence.
+    #[test]
+    fn content_equiv_still_catches_declared_chars_divergence() {
+        let dex_a = DexFile::parse(FIXTURE, None).expect("fixture parses");
+        let mut dex_c = DexFile::parse(FIXTURE, None).expect("fixture parses");
+        let idx = first_decoded_idx(&dex_a);
+
+        match dex_c.strings.get_mut(idx).expect("same-length pool") {
+            DexString::Decoded { declared_chars, .. }
+            | DexString::MalformedMutf8 { declared_chars, .. } => {
+                *declared_chars = declared_chars.wrapping_add(1);
+            }
+        }
+
+        assert_ne!(
+            ContentEquiv(&dex_a),
+            ContentEquiv(&dex_c),
+            "declared_chars is real content — divergence must still be caught"
+        );
     }
 }
