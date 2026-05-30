@@ -425,6 +425,20 @@ pub enum ParseFailureKind {
     /// reader; the record routes the divergence to the emit gate and
     /// `subsection_clean` detectors.
     ClassDefOutOfTopologicalOrder,
+    /// A DEX reserved "(unused)" field that the file-format mandates be
+    /// zero carries a non-zero value. `ParseFailure::offset` is the byte
+    /// locus of the offending reserved field. Covers `map_item.unused:
+    /// u16` (byte +2 of each 12-byte `map_list` row) and
+    /// `method_handle_item.unused: u16` (bytes +2 and +6 of each 8-byte
+    /// row). Recorded first-per-section (at most one `map_item` + one
+    /// `method_handle_item` record per DEX) to bound adversarial spam.
+    ///
+    /// A future DEX revision could assign meaning to these bits; today
+    /// the parser would silently accept attacker-controlled values while
+    /// a reader honoring the new meaning diverges. Tolerant-parse: the
+    /// value is recorded, never rejected — a cheap structural-anomaly
+    /// ratchet.
+    ReservedBitsNonZero,
 }
 
 /// A typed region within a data-section's input byte span. Section
@@ -1410,6 +1424,17 @@ impl DexFile {
         // observe single-pass-hierarchy-builder divergence. Runs after
         // the index rebuild for the O(1) row lookup.
         dex.collect_class_def_topo_violations();
+
+        // DEX MBZ reserved fields (map_item.unused, method_handle_item.unused):
+        // record the first non-zero per section so the emit-gate +
+        // subsection_clean detectors observe an attacker smuggling state
+        // into bytes the spec marks "(unused)".
+        Self::collect_reserved_bits_violations(
+            data,
+            dex.header.map_off,
+            &dex.map_entries,
+            &mut dex.parse_errors,
+        );
 
         // Eagerly populate debug_infos + debug_info_raw_bytes. Both
         // are keyed by the original on-disk `debug_info_off` for
@@ -2817,6 +2842,89 @@ impl DexFile {
                 kind: ParseFailureKind::ClassDefOutOfTopologicalOrder,
                 offset: idx,
             });
+        }
+    }
+
+    /// DEX MBZ ("must be zero") reserved-field gauge. Records the first
+    /// non-zero `unused` field in the `map_list` (`map_item.unused: u16`
+    /// at byte +2 of each 12-byte row, rows starting at `map_off + 4`
+    /// after the u32 count) and the first non-zero `unused` field across
+    /// the `method_handle_item` section (`unused: u16` at bytes +2 and
+    /// +6 of each 8-byte row), each as a
+    /// [`ParseFailureKind::ReservedBitsNonZero`] whose `offset` is the
+    /// byte locus of the reserved field. At most one record per section.
+    ///
+    /// Reads only the reserved bytes from `data`; the already-parsed
+    /// `map_entries` supply the row count and the `method_handle`
+    /// section's offset/size. Each read is `.ok()`-gated, so a truncated
+    /// row simply stops the scan (tolerant-parse: nothing is rejected).
+    fn collect_reserved_bits_violations(
+        data: &[u8],
+        map_off: u32,
+        map_entries: &[MapEntry],
+        parse_errors: &mut Vec<ParseFailure>,
+    ) {
+        const TYPE_METHOD_HANDLE_ITEM: u16 = 0x0008;
+        const MAP_ITEM_STRIDE: usize = 12;
+        const METHOD_HANDLE_ITEM_STRIDE: usize = 8;
+
+        let push_if_nonzero = |off: usize, parse_errors: &mut Vec<ParseFailure>| -> bool {
+            match data.pread_with::<u16>(off, LE) {
+                Ok(unused) if unused != 0 => {
+                    parse_errors.push(ParseFailure {
+                        kind: ParseFailureKind::ReservedBitsNonZero,
+                        offset: u32::try_from(off).unwrap_or(u32::MAX),
+                    });
+                    true
+                }
+                _ => false,
+            }
+        };
+
+        // map_item.unused @ row_off + 2 (rows start past the u32 count).
+        let Some(map_base) = usize::try_from(map_off).ok() else {
+            return;
+        };
+        for i in 0..map_entries.len() {
+            let Some(unused_off) = i
+                .checked_mul(MAP_ITEM_STRIDE)
+                .and_then(|step| step.checked_add(4))
+                .and_then(|pre| map_base.checked_add(pre))
+                .and_then(|row| row.checked_add(2))
+            else {
+                break;
+            };
+            if push_if_nonzero(unused_off, parse_errors) {
+                break; // first non-zero map_item.unused only
+            }
+        }
+
+        // method_handle_item.unused @ row_off + 2 and + 6.
+        if let Some(mh) = map_entries
+            .iter()
+            .find(|e| e.type_code == TYPE_METHOD_HANDLE_ITEM)
+        {
+            let (Ok(mh_base), Ok(mh_count)) =
+                (usize::try_from(mh.offset), usize::try_from(mh.size))
+            else {
+                return;
+            };
+            'rows: for i in 0..mh_count {
+                let Some(row_off) = i
+                    .checked_mul(METHOD_HANDLE_ITEM_STRIDE)
+                    .and_then(|step| mh_base.checked_add(step))
+                else {
+                    break;
+                };
+                for field in [2usize, 6usize] {
+                    let Some(unused_off) = row_off.checked_add(field) else {
+                        break 'rows;
+                    };
+                    if push_if_nonzero(unused_off, parse_errors) {
+                        break 'rows; // first non-zero method_handle.unused only
+                    }
+                }
+            }
         }
     }
 
@@ -5054,5 +5162,108 @@ mod tests {
             dex.super_class_chain_terminator(TypeIdx(0)),
             SuperChainTerminator::Depth
         );
+    }
+
+    // ── §H-8: MBZ reserved fields (ParseFailureKind::ReservedBitsNonZero) ─
+
+    /// Build a one-row `map_list` at offset 0: `count=1` then a single
+    /// 12-byte `map_item` (`type_code`, `unused`, `size`, `offset`).
+    fn map_list_one_row(type_code: u16, unused: u16, size: u32, offset: u32) -> Vec<u8> {
+        let mut d = Vec::new();
+        d.extend_from_slice(&1u32.to_le_bytes());
+        d.extend_from_slice(&type_code.to_le_bytes());
+        d.extend_from_slice(&unused.to_le_bytes());
+        d.extend_from_slice(&size.to_le_bytes());
+        d.extend_from_slice(&offset.to_le_bytes());
+        d
+    }
+
+    #[test]
+    fn reserved_bits_map_item_unused_recorded() {
+        let data = map_list_one_row(0x0000, 0x1234, 1, 0);
+        let map_entries = [MapEntry { type_code: 0, size: 1, offset: 0 }];
+        let mut pe = Vec::new();
+        DexFile::collect_reserved_bits_violations(&data, 0, &map_entries, &mut pe);
+        assert_eq!(pe.len(), 1);
+        assert_eq!(pe[0].kind, ParseFailureKind::ReservedBitsNonZero);
+        assert_eq!(pe[0].offset, 6); // map_off(0) + 4 + 0*12 + 2
+    }
+
+    #[test]
+    fn reserved_bits_map_item_zero_is_clean() {
+        let data = map_list_one_row(0x0000, 0, 1, 0);
+        let map_entries = [MapEntry { type_code: 0, size: 1, offset: 0 }];
+        let mut pe = Vec::new();
+        DexFile::collect_reserved_bits_violations(&data, 0, &map_entries, &mut pe);
+        assert!(pe.is_empty(), "zero reserved field must not flag; got {pe:?}");
+    }
+
+    #[test]
+    fn reserved_bits_method_handle_unused_recorded() {
+        // map_list row points a TYPE_METHOD_HANDLE_ITEM (0x0008) section
+        // at offset 32; the method_handle row's first unused (byte +2,
+        // i.e. offset 34) carries a non-zero value. The map_item's own
+        // unused is zero, so only the method_handle record fires.
+        let mut data = vec![0u8; 40];
+        data[0..4].copy_from_slice(&1u32.to_le_bytes()); // map count
+        data[4..6].copy_from_slice(&0x0008u16.to_le_bytes()); // type_code
+        data[6..8].copy_from_slice(&0u16.to_le_bytes()); // map unused = 0
+        data[8..12].copy_from_slice(&1u32.to_le_bytes()); // size
+        data[12..16].copy_from_slice(&32u32.to_le_bytes()); // offset
+        data[34..36].copy_from_slice(&0xBEEFu16.to_le_bytes()); // mh unused @+2
+        let map_entries = [MapEntry { type_code: 0x0008, size: 1, offset: 32 }];
+        let mut pe = Vec::new();
+        DexFile::collect_reserved_bits_violations(&data, 0, &map_entries, &mut pe);
+        assert_eq!(pe.len(), 1);
+        assert_eq!(pe[0].kind, ParseFailureKind::ReservedBitsNonZero);
+        assert_eq!(pe[0].offset, 34); // mh offset 32 + 2
+    }
+
+    #[test]
+    fn reserved_bits_method_handle_second_unused_recorded() {
+        // Same, but the non-zero unused is the second one (byte +6).
+        let mut data = vec![0u8; 40];
+        data[0..4].copy_from_slice(&1u32.to_le_bytes());
+        data[4..6].copy_from_slice(&0x0008u16.to_le_bytes());
+        data[8..12].copy_from_slice(&1u32.to_le_bytes());
+        data[12..16].copy_from_slice(&32u32.to_le_bytes());
+        data[38..40].copy_from_slice(&0x00FFu16.to_le_bytes()); // mh unused @+6
+        let map_entries = [MapEntry { type_code: 0x0008, size: 1, offset: 32 }];
+        let mut pe = Vec::new();
+        DexFile::collect_reserved_bits_violations(&data, 0, &map_entries, &mut pe);
+        assert_eq!(pe.len(), 1);
+        assert_eq!(pe[0].offset, 38); // mh offset 32 + 6
+    }
+
+    /// End-to-end: patching a non-zero value into a `map_item.unused`
+    /// field of a real fixture surfaces a `ReservedBitsNonZero` record
+    /// through `DexFile::parse`. Proves the gauge is wired in.
+    #[test]
+    fn reserved_bits_wired_into_parse_via_map_item_patch() {
+        let orig = include_bytes!("../../tests/fixtures/classes.dex");
+        let base = DexFile::parse(orig, None).expect("baseline parse");
+        assert!(
+            !base
+                .parse_errors
+                .iter()
+                .any(|p| matches!(p.kind, ParseFailureKind::ReservedBitsNonZero)),
+            "baseline fixture must have zero reserved fields"
+        );
+        let map_off = base.header.map_off as usize;
+        let mut data = orig.to_vec();
+        // First map_item's unused field: map_off + 4 (count) + 2.
+        let unused_off = map_off + 6;
+        data[unused_off..unused_off + 2].copy_from_slice(&0xABCDu16.to_le_bytes());
+        let cks = adler2::adler32_slice(&data[12..]);
+        data[8..12].copy_from_slice(&cks.to_le_bytes());
+
+        let dex = DexFile::parse(&data, None).expect("patched parse (tolerant)");
+        let rb: Vec<_> = dex
+            .parse_errors
+            .iter()
+            .filter(|p| matches!(p.kind, ParseFailureKind::ReservedBitsNonZero))
+            .collect();
+        assert_eq!(rb.len(), 1, "expected one reserved-bits record; got {:?}", dex.parse_errors);
+        assert_eq!(rb[0].offset as usize, unused_off);
     }
 }
