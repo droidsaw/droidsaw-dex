@@ -329,6 +329,31 @@ pub struct ParseFailure {
     pub offset: u32,
 }
 
+/// Which DEX ID pool an [`ParseFailureKind::OutOfOrder`] violation
+/// refers to. The DEX file-format spec mandates a strict ascending sort
+/// with no duplicates for each pool, keyed per pool (see
+/// [`DexFile::collect_pool_ordering_violations`]).
+///
+/// `string_ids` is intentionally absent: its spec key is the referenced
+/// string compared in UTF-16 code-unit order, which an out-of-order pool
+/// fails — but ART's verifier rejects an unsorted `string_ids` outright
+/// (so the DEX never loads), and matching ART's modified-UTF-8 collation
+/// byte-for-byte is a disproportionate decode dependency for a pool that
+/// is irrelevant to decompilation (strings are resolved by index, never
+/// sorted). The index-keyed pools below are simple integer compares and
+/// carry the load-bearing index-vs-iteration evasion coverage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub enum PoolKind {
+    /// `type_ids` — sorted by referenced `string_id` index.
+    TypeIds,
+    /// `proto_ids` — sorted by `(return_type_idx, parameter type_idx list)`.
+    ProtoIds,
+    /// `field_ids` — sorted by `(class_idx, name_idx, type_idx)`.
+    FieldIds,
+    /// `method_ids` — sorted by `(class_idx, name_idx, proto_idx)`.
+    MethodIds,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum ParseFailureKind {
     AnnotationDirectory,
@@ -367,6 +392,23 @@ pub enum ParseFailureKind {
     /// behavior — the index slot pins to the FIRST encounter, duplicate
     /// rows record a `DuplicateClassDef` ParseFailure for diag surfacing.
     DuplicateClassDef,
+    /// An index-keyed ID pool ([`PoolKind`]) violates its DEX-spec
+    /// ordering. `ParseFailure::offset` carries the pool *index* (not a
+    /// byte offset) of the first entry that is `<=` its predecessor under
+    /// the pool's sort key — which also catches duplicates, since the
+    /// spec requires each pool strictly ascending with no duplicate
+    /// entries (type_id_item / proto_id_item / field_id_item /
+    /// method_id_item are each "sorted ... must not contain any duplicate
+    /// entries"). `string_ids` is out of scope — see [`PoolKind`].
+    ///
+    /// Tolerant-parse: the pool is retained exactly as parsed; this
+    /// record is the contract that lets the audit Findings and (post DEX
+    /// C-1) `subsection_clean` detectors observe that droidsaw's O(1)
+    /// index view may diverge from what a re-sorting reader (ART, a
+    /// differential parser) sees — the index-vs-iteration evasion: an
+    /// out-of-order `field_id`/`method_id` lets an index lookup hit one
+    /// row while iteration sees both.
+    OutOfOrder { pool: PoolKind },
 }
 
 /// A typed region within a data-section's input byte span. Section
@@ -989,7 +1031,7 @@ impl DexFile {
         };
 
         let (strings, string_data_offs) = Self::parse_string_pool(data, &header)?;
-        let type_descriptors = Self::parse_types(data, &header, &strings)?;
+        let (type_descriptors, type_descriptor_idxs) = Self::parse_types(data, &header, &strings)?;
         let protos = Self::parse_protos(data, &header, &strings, type_descriptors.len())?;
         let type_lists = Self::parse_type_lists(data, &protos, type_descriptors.len())?;
         let fields = Self::parse_fields(data, &header, type_descriptors.len(), strings.len())?;
@@ -1025,6 +1067,20 @@ impl DexFile {
             &mut type_lists,
             &mut parse_errors,
         )?;
+
+        // DEX spec §"...id_item": each index-keyed ID pool must be
+        // strictly ascending by its sort key with no duplicates. Record
+        // (don't reject) violations so the emit-gate + subsection_clean
+        // detectors observe index-view divergence (audit §H-1).
+        Self::collect_pool_ordering_violations(
+            &type_descriptor_idxs,
+            &protos,
+            &type_lists,
+            &fields,
+            &methods,
+            &mut parse_errors,
+        );
+
         let mut annotation_sets = BTreeMap::new();
         let mut annotation_set_ref_lists = BTreeMap::new();
         let mut annotation_items = BTreeMap::new();
@@ -1586,11 +1642,17 @@ impl DexFile {
         Ok((strings, data_offs))
     }
 
+    /// Returns the resolved descriptor strings paired with the raw
+    /// `descriptor_idx` column (one `string_id` index per type). The raw
+    /// column is retained so [`Self::collect_pool_ordering_violations`]
+    /// can check the spec-mandated `type_ids`-sorted-by-string-id-index
+    /// invariant: the resolved strings alone cannot reconstruct index
+    /// order when `string_ids` is itself adversarially unsorted.
     fn parse_types(
         data: &[u8],
         header: &DexHeader,
         strings: &[crate::DexString],
-    ) -> Result<Vec<String>> {
+    ) -> Result<(Vec<String>, Vec<u32>)> {
         let count = bound_count(
             header.type_ids_size,
             TYPE_ID_ITEM_SIZE,
@@ -1598,6 +1660,7 @@ impl DexFile {
             "type_ids",
         )?;
         let mut types = Vec::with_capacity(count);
+        let mut descriptor_idxs = Vec::with_capacity(count);
         let base = header.type_ids_off as usize;
 
         for i in 0..count {
@@ -1607,6 +1670,7 @@ impl DexFile {
                     offset: off,
                     source: e,
                 })?;
+            descriptor_idxs.push(descriptor_idx);
 
             // Type descriptors are spec-required to be ASCII-shape
             // identifiers (Ljava/lang/Object;); a `MalformedMutf8`
@@ -1625,7 +1689,7 @@ impl DexFile {
             types.push(descriptor);
         }
 
-        Ok(types)
+        Ok((types, descriptor_idxs))
     }
 
     fn parse_protos(
@@ -1949,6 +2013,88 @@ impl DexFile {
         }
 
         Ok(methods)
+    }
+
+    /// Record the first DEX-spec pool-ordering violation in each of the
+    /// five ID pools as a [`ParseFailureKind::OutOfOrder`] entry (with
+    /// `offset` = the violating pool index). The DEX file-format spec
+    /// requires each pool strictly ascending by its sort key with no
+    /// duplicate entries; the first index whose key is `<=` its
+    /// predecessor's is recorded and that pool's scan stops. One record
+    /// per pool bounds adversarial spam — "pool X is unsorted from index
+    /// N" is the load-bearing signal, not an enumeration of every
+    /// inversion. Tolerant-parse: the pools are retained exactly as
+    /// parsed; only the emit-gate and `subsection_clean` detectors
+    /// consume these records.
+    ///
+    /// Sort keys (all integer-index compares; `string_ids` is out of
+    /// scope — see [`PoolKind`]):
+    /// - `type_ids`: referenced `string_id` index (`descriptor_idx`).
+    /// - `proto_ids`: `(return_type_idx, parameter type_idx list)`,
+    ///   lexicographic — the parameter list resolved through `type_lists`
+    ///   (absent / `parameters_off == 0` ⇒ empty list).
+    /// - `field_ids`: `(class_idx, name_idx, type_idx)`.
+    /// - `method_ids`: `(class_idx, name_idx, proto_idx)`.
+    fn collect_pool_ordering_violations(
+        type_descriptor_idxs: &[u32],
+        protos: &[ProtoIdItem],
+        type_lists: &BTreeMap<u32, Vec<TypeIdx>>,
+        fields: &[FieldIdItem],
+        methods: &[MethodIdItem],
+        parse_errors: &mut Vec<ParseFailure>,
+    ) {
+        // Iterate the keys directly (no slice indexing — the crate-root
+        // `indexing_slicing` deny-lint forbids `pool[i]`) and carry the
+        // previous key forward (no `i - 1` — `arithmetic_side_effects`
+        // forbids the subtraction). Returns the index of the first key
+        // that is `<=` its predecessor, which also catches duplicates.
+        fn first_inversion<T: Ord>(keys: impl Iterator<Item = T>) -> Option<usize> {
+            let mut prev: Option<T> = None;
+            for (i, cur) in keys.enumerate() {
+                if let Some(p) = &prev {
+                    if cur <= *p {
+                        return Some(i);
+                    }
+                }
+                prev = Some(cur);
+            }
+            None
+        }
+
+        let empty: &[TypeIdx] = &[];
+        let pools: [(PoolKind, Option<usize>); 4] = [
+            (
+                PoolKind::TypeIds,
+                first_inversion(type_descriptor_idxs.iter().copied()),
+            ),
+            (
+                PoolKind::ProtoIds,
+                first_inversion(protos.iter().map(|p| {
+                    let params = type_lists
+                        .get(&p.parameters_off)
+                        .map(Vec::as_slice)
+                        .unwrap_or(empty);
+                    (p.return_type_idx, params)
+                })),
+            ),
+            (
+                PoolKind::FieldIds,
+                first_inversion(fields.iter().map(|f| (f.class_idx, f.name_idx, f.type_idx))),
+            ),
+            (
+                PoolKind::MethodIds,
+                first_inversion(methods.iter().map(|m| (m.class_idx, m.name_idx, m.proto_idx))),
+            ),
+        ];
+
+        for (pool, idx) in pools {
+            if let Some(i) = idx {
+                parse_errors.push(ParseFailure {
+                    kind: ParseFailureKind::OutOfOrder { pool },
+                    offset: u32::try_from(i).unwrap_or(u32::MAX),
+                });
+            }
+        }
     }
 
     fn parse_class_defs(
@@ -4488,5 +4634,110 @@ mod tests {
             baseline_count, post_dup_count,
             "classes_to_decompile must yield the same count after planting a duplicate-class_idx row (shadow gate filters it); baseline={baseline_count}, post-dup={post_dup_count}"
         );
+    }
+
+    // ── §H-1: pool-ordering invariants (ParseFailureKind::OutOfOrder) ────
+
+    /// Run the pool-ordering validator over hand-built pools and return
+    /// the recorded `ParseFailure`s. Pools not under test pass empty.
+    fn ordering_errors(
+        type_idxs: &[u32],
+        protos: &[ProtoIdItem],
+        type_lists: &BTreeMap<u32, Vec<TypeIdx>>,
+        fields: &[FieldIdItem],
+        methods: &[MethodIdItem],
+    ) -> Vec<ParseFailure> {
+        let mut pe = Vec::new();
+        DexFile::collect_pool_ordering_violations(
+            type_idxs, protos, type_lists, fields, methods, &mut pe,
+        );
+        pe
+    }
+
+    #[test]
+    fn pool_ordering_type_ids_by_string_index() {
+        let tls = BTreeMap::new();
+        assert!(ordering_errors(&[0, 1, 2], &[], &tls, &[], &[]).is_empty());
+        let e = ordering_errors(&[2, 1], &[], &tls, &[], &[]);
+        assert_eq!(e.len(), 1);
+        assert_eq!(
+            e[0].kind,
+            ParseFailureKind::OutOfOrder { pool: PoolKind::TypeIds }
+        );
+        assert_eq!(e[0].offset, 1);
+        // Duplicate string-id index.
+        let e = ordering_errors(&[5, 5], &[], &tls, &[], &[]);
+        assert_eq!(e.len(), 1);
+        assert_eq!(e[0].offset, 1);
+    }
+
+    #[test]
+    fn pool_ordering_proto_ids_return_then_params() {
+        let mut tls = BTreeMap::new();
+        tls.insert(100u32, vec![TypeIdx(0)]); // params = [T0]
+        tls.insert(200u32, vec![TypeIdx(1)]); // params = [T1]
+        let proto = |ret: u32, poff: u32| ProtoIdItem {
+            shorty_idx: StringIdx(0),
+            return_type_idx: TypeIdx(ret),
+            parameters_off: poff,
+        };
+        // Ascending by return type.
+        let ok = [proto(0, 0), proto(1, 0)];
+        assert!(ordering_errors(&[], &ok, &tls, &[], &[]).is_empty());
+        // Same return type, params ascending: empty (parameters_off==0) < [T0].
+        let ok2 = [proto(0, 0), proto(0, 100)];
+        assert!(ordering_errors(&[], &ok2, &tls, &[], &[]).is_empty());
+        // Same return type, params descending: [T1] then [T0] → inversion.
+        let bad = [proto(0, 200), proto(0, 100)];
+        let e = ordering_errors(&[], &bad, &tls, &[], &[]);
+        assert_eq!(e.len(), 1);
+        assert_eq!(
+            e[0].kind,
+            ParseFailureKind::OutOfOrder { pool: PoolKind::ProtoIds }
+        );
+        assert_eq!(e[0].offset, 1);
+    }
+
+    #[test]
+    fn pool_ordering_field_ids_lexicographic() {
+        let tls = BTreeMap::new();
+        let f = |c: u32, n: u32, t: u32| FieldIdItem {
+            class_idx: TypeIdx(c),
+            type_idx: TypeIdx(t),
+            name_idx: StringIdx(n),
+        };
+        // (class major, name intermediate, type minor) ascending.
+        let ok = [f(0, 0, 0), f(0, 0, 1), f(0, 1, 0), f(1, 0, 0)];
+        assert!(ordering_errors(&[], &[], &tls, &ok, &[]).is_empty());
+        // Name out of order within the same class.
+        let bad = [f(0, 1, 0), f(0, 0, 0)];
+        let e = ordering_errors(&[], &[], &tls, &bad, &[]);
+        assert_eq!(e.len(), 1);
+        assert_eq!(
+            e[0].kind,
+            ParseFailureKind::OutOfOrder { pool: PoolKind::FieldIds }
+        );
+        assert_eq!(e[0].offset, 1);
+    }
+
+    #[test]
+    fn pool_ordering_method_ids_lexicographic() {
+        let tls = BTreeMap::new();
+        let m = |c: u32, n: u32, p: u32| MethodIdItem {
+            class_idx: TypeIdx(c),
+            proto_idx: ProtoIdx(p),
+            name_idx: StringIdx(n),
+        };
+        let ok = [m(0, 0, 0), m(0, 0, 1), m(0, 1, 0), m(1, 0, 0)];
+        assert!(ordering_errors(&[], &[], &tls, &[], &ok).is_empty());
+        // Defining class descending.
+        let bad = [m(5, 0, 0), m(1, 0, 0)];
+        let e = ordering_errors(&[], &[], &tls, &[], &bad);
+        assert_eq!(e.len(), 1);
+        assert_eq!(
+            e[0].kind,
+            ParseFailureKind::OutOfOrder { pool: PoolKind::MethodIds }
+        );
+        assert_eq!(e[0].offset, 1);
     }
 }

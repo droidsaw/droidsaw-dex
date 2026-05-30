@@ -110,4 +110,38 @@ fuzz_target!(|data: &[u8]| {
             );
         }
     }
+
+    // Inv 5 (§H-1): pool-ordering records are exact. The parser records
+    // a single `OutOfOrder { pool }` iff that index-keyed pool is not
+    // strictly ascending by its DEX-spec sort key (which also catches
+    // duplicates). Cross-checked here with an INDEPENDENT is-sorted scan
+    // for `field_ids` / `method_ids`, whose keys are plain index tuples
+    // on `DexFile` — genuinely independent of the parser's
+    // `first_inversion`. The `type_ids` / `proto_ids` keys (raw
+    // descriptor index / resolved parameter list) are not retained on
+    // `DexFile`, so they are gauged by the in-crate unit tests instead.
+    use droidsaw_dex::parser::PoolKind;
+    let has_oo = |pool: PoolKind| {
+        dex.parse_errors
+            .iter()
+            .any(|pf| pf.kind == ParseFailureKind::OutOfOrder { pool })
+    };
+    let fields_sorted = dex.fields.windows(2).all(|w| {
+        (w[0].class_idx, w[0].name_idx, w[0].type_idx)
+            < (w[1].class_idx, w[1].name_idx, w[1].type_idx)
+    });
+    assert_eq!(
+        has_oo(PoolKind::FieldIds),
+        !fields_sorted,
+        "field_ids OutOfOrder record must match independent is-sorted scan",
+    );
+    let methods_sorted = dex.methods.windows(2).all(|w| {
+        (w[0].class_idx, w[0].name_idx, w[0].proto_idx)
+            < (w[1].class_idx, w[1].name_idx, w[1].proto_idx)
+    });
+    assert_eq!(
+        has_oo(PoolKind::MethodIds),
+        !methods_sorted,
+        "method_ids OutOfOrder record must match independent is-sorted scan",
+    );
 });
