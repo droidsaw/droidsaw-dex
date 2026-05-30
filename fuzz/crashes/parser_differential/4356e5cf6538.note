@@ -1,0 +1,13 @@
+stage: parser-differential (oracle divergence)
+panic: ORACLE-REJECTED what production accepted
+site: src/parser_oracle.rs — DEX_SUPPORTED_VERSIONS missing "040"
+repro: cargo fuzz run parser_differential fuzz/crashes/parser_differential/4356e5cf6538
+
+The crash input begins with magic bytes `dex\n040\0` (DEX version "040",
+introduced in Android 14). Production DexHeader::parse accepts it via its
+SUPPORTED_VERSIONS list; the oracle's DEX_SUPPORTED_VERSIONS array did not
+include "040", so naive_parse_dex returned UnsupportedVersion. The
+parser_differential harness treats oracle-more-restrictive-than-production as
+a hard failure and panics. Fix: add *b"040" to DEX_SUPPORTED_VERSIONS in
+src/parser_oracle.rs, keeping the oracle's version whitelist in sync with
+header.rs SUPPORTED_VERSIONS.

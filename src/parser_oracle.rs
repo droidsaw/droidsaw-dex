@@ -181,8 +181,8 @@ fn bound_count(
 const DEX_MAGIC_BYTES: [u8; 4] = *b"dex\n";
 const DEX_HEADER_SIZE: usize = 112;
 const DEX_ENDIAN_CONSTANT: u32 = 0x12345678;
-const DEX_SUPPORTED_VERSIONS: [[u8; 3]; 5] =
-    [*b"035", *b"037", *b"038", *b"039", *b"041"];
+const DEX_SUPPORTED_VERSIONS: [[u8; 3]; 6] =
+    [*b"035", *b"037", *b"038", *b"039", *b"040", *b"041"];
 
 // Offsets within the 112-byte DEX header (little-endian u32 fields).
 // OFF_CHECKSUM and OFF_FILE_SIZE / OFF_HEADER_SIZE are not used by the oracle
@@ -482,6 +482,58 @@ mod tests {
         assert!(
             matches!(oracle, Err(ParseOracleError::UnsupportedVersion { .. })),
             "expected UnsupportedVersion, got {oracle:?}"
+        );
+    }
+
+    // ── Unit test 3b: version "040" accepted by oracle ───────────────────
+    //
+    // DEX version 040 is a valid Android-14+ format version accepted by
+    // production. The oracle must accept it so the parser_differential fuzz
+    // target does not flag production-accepted 040 inputs as divergences.
+
+    #[test]
+    fn unit_version_040_oracle_accepts() {
+        // Minimal well-formed 112-byte header with version "040".
+        let mut data = vec![0u8; 112];
+        data[0..4].copy_from_slice(b"dex\n");
+        data[4..7].copy_from_slice(b"040");
+        data[7] = 0;
+        // file_size at offset 32: must be >= 12 and == buf.len() (112).
+        data[32..36].copy_from_slice(&112u32.to_le_bytes());
+        // Endian tag at offset 40: little-endian constant 0x12345678.
+        data[40..44].copy_from_slice(&0x12345678u32.to_le_bytes());
+        // All section counts are zero; oracle should accept with empty tables.
+        let result = naive_parse_dex(&data);
+        assert!(
+            result.is_ok(),
+            "oracle must accept DEX version \"040\"; got {result:?}"
+        );
+        let shape = result.unwrap();
+        assert_eq!(&shape.header_magic[4..7], b"040", "version bytes in shape");
+        assert_eq!(shape.string_ids_size, 0);
+        assert_eq!(shape.type_ids_size, 0);
+        assert_eq!(shape.class_defs_size, 0);
+    }
+
+    // ── Unit test 3c: regression — crash seed with version "040" ─────────
+    //
+    // Regression seed from the parser_differential fuzz campaign. An oracle
+    // that rejects version "040" as UnsupportedVersion diverges from
+    // production, which accepts it, and triggers the ORACLE-REJECTED panic
+    // in the fuzz harness.
+
+    #[test]
+    fn unit_regression_040_crash_seed() {
+        let data = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/fuzz/crashes/parser_differential/4356e5cf6538"
+        ));
+        // Production accepts this input (version "040" is valid).
+        // Oracle must not return UnsupportedVersion.
+        let oracle = naive_parse_dex(data);
+        assert!(
+            !matches!(oracle, Err(ParseOracleError::UnsupportedVersion { .. })),
+            "oracle must not reject DEX version \"040\" as unsupported; got {oracle:?}"
         );
     }
 
