@@ -409,6 +409,22 @@ pub enum ParseFailureKind {
     /// out-of-order `field_id`/`method_id` lets an index lookup hit one
     /// row while iteration sees both.
     OutOfOrder { pool: PoolKind },
+    /// A `class_def` appears in `class_defs` before its superclass or
+    /// before an interface it implements, violating the DEX-spec
+    /// topological-ordering invariant (file-format §"class_def_item":
+    /// a class's superclass and implemented interfaces must appear
+    /// earlier in the list). `ParseFailure::offset` carries the
+    /// `class_defs` *index* (not a byte offset) of the first offending
+    /// class. Only internal (in-DEX) superclasses/interfaces constrain
+    /// the order; external references are skipped.
+    ///
+    /// Finding-and-continue: the IR is retained as parsed (not reordered
+    /// or rejected). Without the record, a single-pass type-hierarchy
+    /// builder over an out-of-order DEX silently computes wrong results
+    /// and `super_class_chain` walks may diverge from a re-sorting
+    /// reader; the record routes the divergence to the emit gate and
+    /// `subsection_clean` detectors.
+    ClassDefOutOfTopologicalOrder,
 }
 
 /// A typed region within a data-section's input byte span. Section
@@ -1387,6 +1403,13 @@ impl DexFile {
         // keyed by `TypeIdx`. Closes the per-recognizer linear scan that
         // dominated flamegraphs of multi-class APKs.
         dex.rebuild_class_def_index();
+
+        // DEX spec §class_def_item: a class must appear after its
+        // superclass and implemented interfaces. Record (don't reorder)
+        // the first violation so emit-gate + subsection_clean detectors
+        // observe single-pass-hierarchy-builder divergence. Runs after
+        // the index rebuild for the O(1) row lookup.
+        dex.collect_class_def_topo_violations();
 
         // Eagerly populate debug_infos + debug_info_raw_bytes. Both
         // are keyed by the original on-disk `debug_info_off` for
@@ -2692,10 +2715,108 @@ impl DexFile {
     /// [`crate::classes::TypeToClassDefMap`] and resolve directly. For
     /// recognizer one-shot use the linear scan is fine.
     pub fn super_class_chain(&self, t: TypeIdx) -> impl Iterator<Item = TypeIdx> + '_ {
-        SuperClassChain {
-            dex: self,
-            current: Some(t),
-            depth: 0,
+        SuperClassChain::new(self, t)
+    }
+
+    /// Walk the super-class chain from `t` upward and report *why* it
+    /// terminates — the discriminator that the bare
+    /// [`Self::super_class_chain`] iterator collapses into `None`.
+    /// Recognizers that must distinguish a benign external/root boundary
+    /// from an attacker-crafted cyclic or pathologically deep chain
+    /// branch on this rather than re-deriving the reason from the
+    /// (truncated) item stream.
+    ///
+    /// - [`SuperChainTerminator::ReachedObject`] — a `class_def` with
+    ///   `superclass_idx == None` was reached (DEX encodes
+    ///   `java.lang.Object`'s superclass as `NO_INDEX`).
+    /// - [`SuperChainTerminator::External`] — the next type to resolve
+    ///   has no `class_def` in this DEX (a framework / library
+    ///   superclass); carries that type.
+    /// - [`SuperChainTerminator::Cycle`] — a type was revisited; the
+    ///   chain forms a loop. Distinguishes a malformed cycle from a
+    ///   legitimately deep stub, which the depth cap alone cannot.
+    /// - [`SuperChainTerminator::Depth`] — `MAX_SUPER_CHAIN_DEPTH` hops
+    ///   elapsed without reaching Object, an external type, or a cycle.
+    ///
+    /// Bounded to `MAX_SUPER_CHAIN_DEPTH` hops; every step is
+    /// `.get()`-gated (via `class_def_for_type`). Drives the *same*
+    /// [`SuperClassChain`] iterator that [`Self::super_class_chain`]
+    /// exposes — there is one walk, so the item stream and this
+    /// stop-reason can never diverge.
+    pub fn super_class_chain_terminator(&self, t: TypeIdx) -> SuperChainTerminator {
+        let mut chain = SuperClassChain::new(self, t);
+        // Drive the walk to its terminating `next()`; `terminator` is set
+        // the moment the iterator yields `None`.
+        for _ in chain.by_ref() {}
+        chain.terminator
+    }
+
+    /// Row index in `class_defs` of the `class_def` defining type `t`
+    /// (the FIRST such row, matching `class_def_for_type`'s first-wins
+    /// resolution), or `None` when `t` has no `class_def` in this DEX.
+    /// O(1) via `class_def_index` when populated; linear-scan fallback
+    /// for hand-built fixtures whose index isn't rebuilt.
+    fn class_defs_row_of(&self, t: TypeIdx) -> Option<usize> {
+        if self.class_def_index.len() == self.type_descriptors.len() {
+            let ti = usize::try_from(t.0).ok()?;
+            let row = self.class_def_index.get(ti).copied().flatten()?;
+            return usize::try_from(row).ok();
+        }
+        self.class_defs.iter().position(|cd| cd.class_idx == t)
+    }
+
+    /// Verify the DEX-spec `class_def_item` topological-ordering
+    /// invariant: every class must appear after its superclass and after
+    /// every interface it implements (DEX file-format §"class_def_item":
+    /// "classes must be ordered such that a given class's superclass and
+    /// implemented interfaces appear ... earlier in the list"). Records
+    /// the first offending `class_def` per DEX as
+    /// [`ParseFailureKind::ClassDefOutOfTopologicalOrder`] with
+    /// `offset` = the offending `class_defs` index.
+    ///
+    /// Finding-and-continue: tolerant-parse is preserved (the IR is not
+    /// reordered or rejected); the record lets the emit round-trip gate
+    /// and `subsection_clean` detectors observe that a single-pass
+    /// type-hierarchy builder over this DEX may compute wrong results —
+    /// the corruption is forensic signal, not a parse blocker. Only
+    /// internal (in-DEX) superclasses/interfaces constrain the order;
+    /// external references cannot be ordered and are skipped.
+    ///
+    /// Must run after [`Self::rebuild_class_def_index`] so the O(1) row
+    /// lookup is available.
+    fn collect_class_def_topo_violations(&mut self) {
+        let mut violator: Option<u32> = None;
+        for (i, cd) in self.class_defs.iter().enumerate() {
+            let mut out_of_order = false;
+            if let Some(sup) = cd.superclass_idx {
+                if let Some(j) = self.class_defs_row_of(sup) {
+                    if j >= i {
+                        out_of_order = true;
+                    }
+                }
+            }
+            if !out_of_order {
+                if let Some(ifaces) = self.type_lists.get(&cd.interfaces_off) {
+                    for &t in ifaces {
+                        if let Some(k) = self.class_defs_row_of(t) {
+                            if k >= i {
+                                out_of_order = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if out_of_order {
+                violator = Some(u32::try_from(i).unwrap_or(u32::MAX));
+                break;
+            }
+        }
+        if let Some(idx) = violator {
+            self.parse_errors.push(ParseFailure {
+                kind: ParseFailureKind::ClassDefOutOfTopologicalOrder,
+                offset: idx,
+            });
         }
     }
 
@@ -3474,29 +3595,92 @@ impl DexFile {
     }
 }
 
+/// Why a super-class chain walk terminated. Returned by
+/// [`DexFile::super_class_chain_terminator`] — the typed discriminator
+/// the bare [`DexFile::super_class_chain`] iterator collapses into
+/// `None`, so recognizers can branch on a benign root/external boundary
+/// versus an attacker-crafted cyclic or pathologically deep chain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SuperChainTerminator {
+    /// Reached a `class_def` whose `superclass_idx` is `None`
+    /// (`java.lang.Object`, encoded as `NO_INDEX`).
+    ReachedObject,
+    /// The next type to resolve has no `class_def` in this DEX (an
+    /// external / framework superclass). Carries that type.
+    External(TypeIdx),
+    /// A type was revisited — the super chain forms a cycle. Carries
+    /// the repeated type. Distinguishes a malformed cycle from a
+    /// legitimately deep chain, which the depth cap alone cannot.
+    Cycle(TypeIdx),
+    /// [`MAX_SUPER_CHAIN_DEPTH`] hops elapsed without reaching Object,
+    /// an external type, or a detected cycle.
+    Depth,
+}
+
 /// Iterator backing [`DexFile::super_class_chain`]. Walks one super-class
-/// hop per `next()` call; tracks depth to terminate on cyclic chains
-/// after [`MAX_SUPER_CHAIN_DEPTH`] hops.
+/// hop per `next()` call. The single source of truth for the super-chain
+/// walk: [`DexFile::super_class_chain_terminator`] drives this same
+/// iterator to exhaustion and reads `terminator`, so the item stream and
+/// the typed stop-reason can never disagree.
+///
+/// Termination is recorded in `terminator` the moment `next()` returns
+/// `None`: a `class_def`-less type (`External`), a `None` superclass
+/// (`ReachedObject`), a revisited type (`Cycle`), or the
+/// [`MAX_SUPER_CHAIN_DEPTH`] cap (`Depth`). The visited-set makes the
+/// walk cycle-correct — a cyclic chain stops at the repeat rather than
+/// yielding duplicates up to the depth cap. Bounded to
+/// `MAX_SUPER_CHAIN_DEPTH` hops, so the visited-set allocation is bounded
+/// by the same cap; this is the documented non-hot one-shot path.
 struct SuperClassChain<'a> {
     dex: &'a DexFile,
-    /// Type whose superclass will be yielded next. `None` when the chain
-    /// has terminated (external type, reached Object, or depth-capped).
+    /// Type whose superclass will be yielded next. `None` once the chain
+    /// has terminated (and `terminator` records why).
     current: Option<TypeIdx>,
-    depth: usize,
+    /// Types already walked, for cycle detection.
+    visited: Vec<TypeIdx>,
+    /// Why the walk stopped. Meaningful once `next()` has returned
+    /// `None`; the placeholder before then is `Depth`.
+    terminator: SuperChainTerminator,
+}
+
+impl<'a> SuperClassChain<'a> {
+    fn new(dex: &'a DexFile, t: TypeIdx) -> Self {
+        SuperClassChain {
+            dex,
+            current: Some(t),
+            visited: Vec::new(),
+            terminator: SuperChainTerminator::Depth,
+        }
+    }
 }
 
 impl Iterator for SuperClassChain<'_> {
     type Item = TypeIdx;
 
     fn next(&mut self) -> Option<TypeIdx> {
-        if self.depth >= MAX_SUPER_CHAIN_DEPTH {
+        let cur = self.current?;
+        if self.visited.len() >= MAX_SUPER_CHAIN_DEPTH {
+            self.terminator = SuperChainTerminator::Depth;
+            self.current = None;
             return None;
         }
-        let cur = self.current?;
-        let cd = self.dex.class_def_for_type(cur)?;
-        let sup = cd.superclass_idx?;
+        if self.visited.contains(&cur) {
+            self.terminator = SuperChainTerminator::Cycle(cur);
+            self.current = None;
+            return None;
+        }
+        self.visited.push(cur);
+        let Some(cd) = self.dex.class_def_for_type(cur) else {
+            self.terminator = SuperChainTerminator::External(cur);
+            self.current = None;
+            return None;
+        };
+        let Some(sup) = cd.superclass_idx else {
+            self.terminator = SuperChainTerminator::ReachedObject;
+            self.current = None;
+            return None;
+        };
         self.current = Some(sup);
-        self.depth = self.depth.saturating_add(1);
         Some(sup)
     }
 }
@@ -4739,5 +4923,136 @@ mod tests {
             ParseFailureKind::OutOfOrder { pool: PoolKind::MethodIds }
         );
         assert_eq!(e[0].offset, 1);
+    }
+
+    // ── §H-5: class_def topological order + typed super-chain terminator ─
+
+    /// Build a `DexFile` scaffold for hierarchy tests: parse a real
+    /// fixture for a fully-formed base, then overwrite the type pool and
+    /// `class_defs` with a synthetic hierarchy. `defs` is a list of
+    /// `(class_idx, superclass_idx)` pairs in `class_defs` row order
+    /// (`None` superclass = `java.lang.Object`). All `class_idx` /
+    /// superclass indices must be `< num_types`. Interfaces are empty.
+    fn scaffold_dex(num_types: u32, defs: &[(u32, Option<u32>)]) -> DexFile {
+        let data = include_bytes!("../../tests/fixtures/classes.dex");
+        let mut dex = DexFile::parse(data, None).expect("scaffold base parse");
+        dex.type_descriptors = (0..num_types).map(|i| format!("LT{i};")).collect();
+        dex.class_defs = defs
+            .iter()
+            .map(|&(class_idx, superclass_idx)| ClassDefItem {
+                class_idx: TypeIdx(class_idx),
+                access_flags: 0,
+                superclass_idx: superclass_idx.map(TypeIdx),
+                interfaces_off: 0,
+                source_file_idx: None,
+                annotations_off: 0,
+                class_data_off: 0,
+                static_values_off: 0,
+            })
+            .collect();
+        dex.type_lists.clear();
+        dex.rebuild_class_def_index();
+        dex.parse_errors.clear();
+        dex
+    }
+
+    #[test]
+    fn class_def_topo_clean_when_superclass_precedes() {
+        // row0: T0 extends Object; row1: T1 extends T0 (row0 < row1).
+        let mut dex = scaffold_dex(4, &[(0, None), (1, Some(0))]);
+        dex.collect_class_def_topo_violations();
+        assert!(
+            !dex.parse_errors
+                .iter()
+                .any(|p| matches!(p.kind, ParseFailureKind::ClassDefOutOfTopologicalOrder)),
+            "topologically ordered class_defs must not flag; got {:?}",
+            dex.parse_errors
+        );
+    }
+
+    #[test]
+    fn class_def_topo_violation_when_subclass_precedes_superclass() {
+        // row0: T0 extends T1 — superclass at row1 >= row0 → violation.
+        let mut dex = scaffold_dex(4, &[(0, Some(1)), (1, None)]);
+        dex.collect_class_def_topo_violations();
+        let v: Vec<_> = dex
+            .parse_errors
+            .iter()
+            .filter(|p| matches!(p.kind, ParseFailureKind::ClassDefOutOfTopologicalOrder))
+            .collect();
+        assert_eq!(v.len(), 1, "expected one topo violation; got {:?}", dex.parse_errors);
+        assert_eq!(v[0].offset, 0, "offending class_defs index is 0");
+    }
+
+    #[test]
+    fn super_chain_terminator_reached_object() {
+        let dex = scaffold_dex(4, &[(0, None)]);
+        assert_eq!(
+            dex.super_class_chain_terminator(TypeIdx(0)),
+            SuperChainTerminator::ReachedObject
+        );
+    }
+
+    #[test]
+    fn super_chain_terminator_external() {
+        // T0 extends T3, but T3 has no class_def in this DEX.
+        let dex = scaffold_dex(4, &[(0, Some(3))]);
+        assert_eq!(
+            dex.super_class_chain_terminator(TypeIdx(0)),
+            SuperChainTerminator::External(TypeIdx(3))
+        );
+    }
+
+    #[test]
+    fn super_chain_terminator_cycle() {
+        // T0 extends T1, T1 extends T0.
+        let dex = scaffold_dex(4, &[(0, Some(1)), (1, Some(0))]);
+        assert_eq!(
+            dex.super_class_chain_terminator(TypeIdx(0)),
+            SuperChainTerminator::Cycle(TypeIdx(0))
+        );
+    }
+
+    #[test]
+    fn super_chain_iterator_and_terminator_share_one_walk() {
+        // The iterator and the terminator are one walk: on a cycle
+        // (T0→T1→T0) the iterator stops at the repeat (no duplicate
+        // yields up to the depth cap) and the terminator reports Cycle —
+        // the two views cannot diverge.
+        let dex = scaffold_dex(4, &[(0, Some(1)), (1, Some(0))]);
+        let chain: Vec<TypeIdx> = dex.super_class_chain(TypeIdx(0)).collect();
+        assert_eq!(
+            chain,
+            vec![TypeIdx(1), TypeIdx(0)],
+            "cyclic chain must stop at the revisit, not yield duplicates"
+        );
+        assert_eq!(
+            dex.super_class_chain_terminator(TypeIdx(0)),
+            SuperChainTerminator::Cycle(TypeIdx(0))
+        );
+    }
+
+    #[test]
+    fn super_chain_terminator_depth() {
+        // Linear chain of MAX_SUPER_CHAIN_DEPTH + 2 internal classes,
+        // each extending the next; the walk hits the depth cap before
+        // reaching the final Object terminator.
+        let n = MAX_SUPER_CHAIN_DEPTH + 2;
+        let defs: Vec<(u32, Option<u32>)> = (0..n)
+            .map(|i| {
+                let ci = u32::try_from(i).unwrap();
+                let sup = if i + 1 < n {
+                    Some(u32::try_from(i + 1).unwrap())
+                } else {
+                    None
+                };
+                (ci, sup)
+            })
+            .collect();
+        let dex = scaffold_dex(u32::try_from(n).unwrap(), &defs);
+        assert_eq!(
+            dex.super_class_chain_terminator(TypeIdx(0)),
+            SuperChainTerminator::Depth
+        );
     }
 }

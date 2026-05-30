@@ -144,4 +144,14 @@ fuzz_target!(|data: &[u8]| {
         !methods_sorted,
         "method_ids OutOfOrder record must match independent is-sorted scan",
     );
+
+    // Inv 6 (§H-5): the typed super-chain terminator always terminates
+    // (bounded by MAX_SUPER_CHAIN_DEPTH) and never panics on an
+    // adversarial — possibly cyclic — class hierarchy. Exercise it for
+    // every class. The topological-ordering check itself runs inside
+    // DexFile::parse, so a planted out-of-order class hierarchy is
+    // already gauged by the parse above.
+    for cd in &dex.class_defs {
+        let _ = dex.super_class_chain_terminator(cd.class_idx);
+    }
 });
