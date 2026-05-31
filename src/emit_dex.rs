@@ -1915,18 +1915,33 @@ fn emit_dex_inner(
     // `EmitOutput.applied_transformations` by `emit_dex_collect`.
     let mut emit_transforms: Vec<CanonicalTransform> = Vec::new();
 
-    // Partial-IR gate (evasion-primitive mitigation). A `DexFile`
-    // with `parse_errors` populated represents bytes whose tolerant
-    // parse dropped subsection(s); emit would produce output that
-    // is a PARTIAL IMAGE of the source input. Strict mode refuses
-    // this shape; callers opt in via `permit_partial_ir: true`.
+    // Partial-IR gate (evasion-primitive mitigation). Fires ONLY on
+    // COMPLETENESS failures (`ParseFailureKind::is_completeness`) — a
+    // dropped subsection makes the IR a partial image, which BOTH emit
+    // modes would reproduce as partial output (canonical omits the bytes;
+    // preserve re-serializes the IR subsections at their offsets and so
+    // leaves an unwritten gap where the dropped one was). CONFORMANCE
+    // anomalies (out-of-order pool, dup class_idx, non-topological order,
+    // reserved bits) are deliberately NOT gated here: the data is fully
+    // present, so preserve mode replays it byte-faithfully (an analyst's
+    // forensic round-trip of a tampered sample must not be blocked) and
+    // canonical normalizes it; both surface the anomaly as audit
+    // Findings instead. Callers opt past completeness via
+    // `permit_partial_ir: true`.
     if !config.permit_partial_ir {
-        if let Some(first) = dex.parse_errors.first() {
-            return Err(DexEmitError::PartialIR {
-                count: dex.parse_errors.len(),
-                first_kind: first.kind,
-                first_offset: first.offset,
-            });
+        let completeness = dex
+            .parse_errors
+            .iter()
+            .filter(|f| f.kind.is_completeness())
+            .count();
+        if completeness > 0 {
+            if let Some(first) = dex.parse_errors.iter().find(|f| f.kind.is_completeness()) {
+                return Err(DexEmitError::PartialIR {
+                    count: completeness,
+                    first_kind: first.kind,
+                    first_offset: first.offset,
+                });
+            }
         }
     }
 
@@ -9011,6 +9026,52 @@ mod tests {
         assert_eq!(parsed.header.version(), "035");
         // Checksum must verify against our own Adler-32 compute.
         parsed.header.verify_checksum(&bytes).expect("checksum valid");
+    }
+
+    #[test]
+    fn partial_ir_gate_distinguishes_completeness_from_conformance() {
+        use crate::parser::{ParseFailure, ParseFailureKind, PoolKind};
+        let mut dex = minimal_dexfile();
+        // Baseline: no parse_errors → emits.
+        assert!(emit_dex(&dex).is_ok(), "clean IR must emit");
+
+        // A CONFORMANCE anomaly (data fully present, just non-conformant)
+        // must NOT gate strict emit — preserve replays it byte-faithfully
+        // and canonical normalizes it; it surfaces as an audit Finding.
+        dex.parse_errors.push(ParseFailure {
+            kind: ParseFailureKind::OutOfOrder { pool: PoolKind::MethodIds },
+            offset: 1,
+        });
+        dex.parse_errors.push(ParseFailure {
+            kind: ParseFailureKind::DuplicateClassDef,
+            offset: 0,
+        });
+        assert!(
+            emit_dex(&dex).is_ok(),
+            "conformance anomalies (OutOfOrder/DuplicateClassDef) must not trip the PartialIR gate"
+        );
+
+        // A COMPLETENESS failure (dropped subsection → partial image) DOES
+        // gate strict emit, in either mode (preserve re-serializes IR, so
+        // a dropped subsection leaves a gap there too).
+        dex.parse_errors.push(ParseFailure {
+            kind: ParseFailureKind::ClassData,
+            offset: 0x100,
+        });
+        assert!(
+            matches!(emit_dex(&dex), Err(DexEmitError::PartialIR { .. })),
+            "a completeness failure (ClassData) must trip the PartialIR gate"
+        );
+        // And the gate also fires under preserve mode for completeness.
+        let mut cfg = EmitConfig::default();
+        cfg.preserve_data_section_layout = true;
+        assert!(
+            matches!(
+                emit_dex_with_config(&dex, &cfg).map(|_| ()),
+                Err(DexEmitError::PartialIR { .. })
+            ),
+            "completeness must gate preserve mode too (preserve re-serializes IR)"
+        );
     }
 
     #[test]

@@ -39,11 +39,13 @@ fuzz_target!(|data: &[u8]| {
         Err(droidsaw_dex::emit_dex::DexEmitError::UnrepresentableIR { .. }) => return,
         Err(droidsaw_dex::emit_dex::DexEmitError::SizeOverflow { .. }) => return,
         Err(droidsaw_dex::emit_dex::DexEmitError::OffsetOverflow { .. }) => return,
-        // PartialIR fires when the parser captured a silent skip in
-        // `parse_errors`. Fuzz drives mutated inputs, so parse
-        // errors are EXPECTED on most samples. Skip — the emit
-        // contract is that PartialIR is a typed refusal, not an
-        // internal bug. (strict-default gate landed at a2ca788.)
+        // PartialIR fires when the parser dropped a subsection — a
+        // COMPLETENESS failure (`ParseFailureKind::is_completeness`), so
+        // the IR is a partial image. Conformance anomalies (out-of-order
+        // pool, dup class_idx, reserved bits) do NOT trip it: they reach
+        // emit and round-trip through here. Fuzz drives mutated inputs,
+        // so completeness failures are common — skip; PartialIR is a
+        // typed refusal, not an internal bug.
         Err(droidsaw_dex::emit_dex::DexEmitError::PartialIR { .. }) => return,
         Err(e) => panic!("emit_dex internal/unexpected failure: {e}"),
     };

@@ -441,6 +441,53 @@ pub enum ParseFailureKind {
     ReservedBitsNonZero,
 }
 
+impl ParseFailureKind {
+    /// Classify this record by its *nature* — the distinction the emit
+    /// gate must respect (separation of completeness from conformance).
+    ///
+    /// `true` = **completeness** failure: the tolerant parser DROPPED a
+    /// subsection's bytes, so the IR is a partial image of the input.
+    /// These gate emit: canonical re-serialization would silently omit
+    /// the dropped bytes, and preserve emit re-serializes the IR
+    /// subsections at their recorded offsets (it does not memcpy the raw
+    /// data blob), so a dropped subsection leaves an unwritten gap there
+    /// too — a partial image in *either* mode. Hence completeness blocks
+    /// both modes via [`crate::emit_dex::DexEmitError::PartialIR`].
+    ///
+    /// `false` = **conformance** anomaly: the data is FULLY captured but
+    /// violates a spec invariant (out-of-order pool, duplicate
+    /// `class_idx`, non-topological class order, reserved bits set).
+    /// Nothing is missing — preserve emit replays it byte-faithfully
+    /// (anomaly and all), and canonical emit normalizes it by
+    /// construction. These must NOT gate emit; they surface as audit
+    /// Findings ([`crate::diag::collect_spec_invariant_findings`] /
+    /// [`crate::diag::collect_duplicate_class_def_findings`]).
+    ///
+    /// Exhaustive by design: the `match` forces a new kind to be
+    /// classified explicitly rather than silently defaulting to a bucket.
+    #[must_use]
+    pub fn is_completeness(self) -> bool {
+        match self {
+            // Dropped subsections — IR is a partial image.
+            Self::AnnotationDirectory
+            | Self::AnnotationSet
+            | Self::AnnotationSetRefList
+            | Self::AnnotationItem
+            | Self::EncodedArray
+            | Self::ClassData
+            | Self::CodeItem
+            | Self::DebugInfo
+            | Self::Interfaces
+            | Self::MapList => true,
+            // Conformance anomalies — data present, just non-conformant.
+            Self::DuplicateClassDef
+            | Self::OutOfOrder { .. }
+            | Self::ClassDefOutOfTopologicalOrder
+            | Self::ReservedBitsNonZero => false,
+        }
+    }
+}
+
 /// A typed region within a data-section's input byte span. Section
 /// walkers (currently: `walk_debug_info_section_full`) produce a
 /// `Vec<SectionRegion>` covering every byte of the section in offset
