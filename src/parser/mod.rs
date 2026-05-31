@@ -333,17 +333,11 @@ pub struct ParseFailure {
 /// refers to. The DEX file-format spec mandates a strict ascending sort
 /// with no duplicates for each pool, keyed per pool (see
 /// [`DexFile::collect_pool_ordering_violations`]).
-///
-/// `string_ids` is intentionally absent: its spec key is the referenced
-/// string compared in UTF-16 code-unit order, which an out-of-order pool
-/// fails — but ART's verifier rejects an unsorted `string_ids` outright
-/// (so the DEX never loads), and matching ART's modified-UTF-8 collation
-/// byte-for-byte is a disproportionate decode dependency for a pool that
-/// is irrelevant to decompilation (strings are resolved by index, never
-/// sorted). The index-keyed pools below are simple integer compares and
-/// carry the load-bearing index-vs-iteration evasion coverage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum PoolKind {
+    /// `string_ids` — sorted by the referenced string in ART's UTF-16
+    /// code-unit collation (see [`DexFile::mutf8_ordering_key`]).
+    StringIds,
     /// `type_ids` — sorted by referenced `string_id` index.
     TypeIds,
     /// `proto_ids` — sorted by `(return_type_idx, parameter type_idx list)`.
@@ -392,14 +386,14 @@ pub enum ParseFailureKind {
     /// behavior — the index slot pins to the FIRST encounter, duplicate
     /// rows record a `DuplicateClassDef` ParseFailure for diag surfacing.
     DuplicateClassDef,
-    /// An index-keyed ID pool ([`PoolKind`]) violates its DEX-spec
-    /// ordering. `ParseFailure::offset` carries the pool *index* (not a
-    /// byte offset) of the first entry that is `<=` its predecessor under
-    /// the pool's sort key — which also catches duplicates, since the
-    /// spec requires each pool strictly ascending with no duplicate
-    /// entries (type_id_item / proto_id_item / field_id_item /
+    /// An ID pool ([`PoolKind`]) violates its DEX-spec ordering.
+    /// `ParseFailure::offset` carries the pool *index* (not a byte offset)
+    /// of the first entry that is `<=` its predecessor under the pool's
+    /// sort key — which also catches duplicates, since the spec requires
+    /// each pool strictly ascending with no duplicate entries
+    /// (string_id_item / type_id_item / proto_id_item / field_id_item /
     /// method_id_item are each "sorted ... must not contain any duplicate
-    /// entries"). `string_ids` is out of scope — see [`PoolKind`].
+    /// entries").
     ///
     /// Tolerant-parse: the pool is retained exactly as parsed; this
     /// record is the contract that lets the audit Findings and (post DEX
@@ -1150,6 +1144,7 @@ impl DexFile {
         // (don't reject) violations so the emit-gate + subsection_clean
         // detectors observe index-view divergence (audit §H-1).
         Self::collect_pool_ordering_violations(
+            &strings,
             &type_descriptor_idxs,
             &protos,
             &type_lists,
@@ -2110,8 +2105,82 @@ impl DexFile {
         Ok(methods)
     }
 
-    /// Record the first DEX-spec pool-ordering violation in each of the
-    /// five ID pools as a [`ParseFailureKind::OutOfOrder`] entry (with
+    /// Decode a DEX string's raw modified-UTF-8 bytes into the code-point
+    /// sequence ART compares when ordering `string_ids` (ART's
+    /// `CompareModifiedUtf8ToModifiedUtf8AsUtf16CodePointValues` via
+    /// `GetUtf16FromUtf8`). This is the spec sort key for the `string_ids`
+    /// arm — deliberately NOT `as_str_lossy().encode_utf16()`:
+    /// `from_utf8_lossy` substitutes one `U+FFFD` per ill-formed *byte*,
+    /// so a malformed entry's length (and order) diverges from ART (which
+    /// decodes each on-disk sequence to a single code unit), re-opening an
+    /// ordering false-negative on every `MalformedMutf8` entry.
+    ///
+    /// Mirrors ART byte-for-byte: a continuation byte is read
+    /// unconditionally (mask `& 0x3F`, no high-bit check); a multibyte
+    /// lead truncated at the end of the content reads the on-disk NUL
+    /// terminator (`0x00`) as its missing byte (`C0 80`→U+0000, a trailing
+    /// `C2`→U+0080, `ED A0`→U+D800); 2-byte vs 3-byte is ART's bit-5
+    /// branch; a valid high+low CESU-8 pair assembles to its supplementary
+    /// code point. The key is therefore intentionally NON-injective — ART
+    /// collides an overlong `C1 81` with canonical `A`, so they must
+    /// compare equal; the duplicate-descriptor hiding primitive needs
+    /// droidsaw and ART to *disagree*, and keying on ART's own decode
+    /// closes it by construction. Correctness is pinned by the
+    /// `mutf8_ordering_key_tests` round-trip proptest.
+    pub fn mutf8_ordering_key(raw: &[u8]) -> Vec<u32> {
+        /// Assemble a supplementary code point from a high surrogate `hi`
+        /// and a low-surrogate 3-byte CESU-8 sequence at `raw[at..]`.
+        fn assemble_low_surrogate(raw: &[u8], at: usize, hi: u32) -> Option<u32> {
+            let b3 = *raw.get(at)?;
+            if b3 & 0xF0 != 0xE0 {
+                return None;
+            }
+            let b4 = raw.get(at.saturating_add(1)).copied().unwrap_or(0);
+            let b5 = raw.get(at.saturating_add(2)).copied().unwrap_or(0);
+            let lo = u32::from(b3 & 0x0F) << 12 | u32::from(b4 & 0x3F) << 6 | u32::from(b5 & 0x3F);
+            if !(0xDC00..=0xDFFF).contains(&lo) {
+                return None;
+            }
+            Some(
+                0x1_0000u32
+                    .wrapping_add(hi.wrapping_sub(0xD800) << 10)
+                    .wrapping_add(lo.wrapping_sub(0xDC00)),
+            )
+        }
+
+        let mut out: Vec<u32> = Vec::with_capacity(raw.len());
+        let mut i = 0usize;
+        while let Some(&b0) = raw.get(i) {
+            if b0 & 0x80 == 0 {
+                out.push(u32::from(b0));
+                i = i.saturating_add(1);
+                continue;
+            }
+            let b1 = raw.get(i.saturating_add(1)).copied().unwrap_or(0);
+            if b0 & 0x20 == 0 {
+                out.push(u32::from(b0 & 0x1F) << 6 | u32::from(b1 & 0x3F));
+                i = i.saturating_add(2);
+            } else {
+                let b2 = raw.get(i.saturating_add(2)).copied().unwrap_or(0);
+                let cp = u32::from(b0 & 0x0F) << 12
+                    | u32::from(b1 & 0x3F) << 6
+                    | u32::from(b2 & 0x3F);
+                if (0xD800..=0xDBFF).contains(&cp) {
+                    if let Some(sup) = assemble_low_surrogate(raw, i.saturating_add(3), cp) {
+                        out.push(sup);
+                        i = i.saturating_add(6);
+                        continue;
+                    }
+                }
+                out.push(cp);
+                i = i.saturating_add(3);
+            }
+        }
+        out
+    }
+
+    /// Record the first DEX-spec pool-ordering violation in each ID pool
+    /// as a [`ParseFailureKind::OutOfOrder`] entry (with
     /// `offset` = the violating pool index). The DEX file-format spec
     /// requires each pool strictly ascending by its sort key with no
     /// duplicate entries; the first index whose key is `<=` its
@@ -2122,8 +2191,9 @@ impl DexFile {
     /// parsed; only the emit-gate and `subsection_clean` detectors
     /// consume these records.
     ///
-    /// Sort keys (all integer-index compares; `string_ids` is out of
-    /// scope — see [`PoolKind`]):
+    /// Sort keys:
+    /// - `string_ids`: the referenced string in ART's code-point order,
+    ///   computed from the raw MUTF-8 bytes by [`Self::mutf8_ordering_key`].
     /// - `type_ids`: referenced `string_id` index (`descriptor_idx`).
     /// - `proto_ids`: `(return_type_idx, parameter type_idx list)`,
     ///   lexicographic — the parameter list resolved through `type_lists`
@@ -2131,6 +2201,7 @@ impl DexFile {
     /// - `field_ids`: `(class_idx, name_idx, type_idx)`.
     /// - `method_ids`: `(class_idx, name_idx, proto_idx)`.
     fn collect_pool_ordering_violations(
+        strings: &[crate::DexString],
         type_descriptor_idxs: &[u32],
         protos: &[ProtoIdItem],
         type_lists: &BTreeMap<u32, Vec<TypeIdx>>,
@@ -2157,7 +2228,11 @@ impl DexFile {
         }
 
         let empty: &[TypeIdx] = &[];
-        let pools: [(PoolKind, Option<usize>); 4] = [
+        let pools: [(PoolKind, Option<usize>); 5] = [
+            (
+                PoolKind::StringIds,
+                first_inversion(strings.iter().map(|s| Self::mutf8_ordering_key(s.raw_bytes()))),
+            ),
             (
                 PoolKind::TypeIds,
                 first_inversion(type_descriptor_idxs.iter().copied()),
@@ -4988,9 +5063,119 @@ mod tests {
     ) -> Vec<ParseFailure> {
         let mut pe = Vec::new();
         DexFile::collect_pool_ordering_violations(
-            type_idxs, protos, type_lists, fields, methods, &mut pe,
+            &[], type_idxs, protos, type_lists, fields, methods, &mut pe,
         );
         pe
+    }
+
+    /// String-pool ordering errors only (other pools empty).
+    fn string_ordering_errors(strings: &[crate::DexString]) -> Vec<ParseFailure> {
+        let tls = BTreeMap::new();
+        let mut pe = Vec::new();
+        DexFile::collect_pool_ordering_violations(strings, &[], &[], &tls, &[], &[], &mut pe);
+        pe
+    }
+
+    #[test]
+    fn pool_ordering_string_ids_flags_unsorted_and_malformed() {
+        let s = crate::DexString::from_decoded_str;
+        // Strictly ascending by code unit → clean; reversed → flagged.
+        assert!(string_ordering_errors(&[s("A"), s("B")]).is_empty());
+        let e = string_ordering_errors(&[s("B"), s("A")]);
+        assert_eq!(e.len(), 1);
+        assert_eq!(
+            e[0].kind,
+            ParseFailureKind::OutOfOrder { pool: PoolKind::StringIds }
+        );
+        // The lone-surrogate evasion the lossy key missed: A=ED BF BF
+        // (U+DFFF) > B=ED A0 80 ED A0 80 (U+D800,U+D800) by ART's
+        // code-unit order, so [A, B] is descending and MUST be flagged.
+        let mal = |bytes: Vec<u8>| {
+            crate::DexString::new_malformed_mutf8(
+                bytes,
+                droidsaw_common::encoding::EncodingError::InvalidSequence { offset: 0 },
+                1,
+                true,
+            )
+        };
+        let a = mal(vec![0xED, 0xBF, 0xBF]);
+        let b = mal(vec![0xED, 0xA0, 0x80, 0xED, 0xA0, 0x80]);
+        assert_eq!(string_ordering_errors(&[a, b]).len(), 1);
+    }
+
+    mod mutf8_ordering_key_tests {
+        use super::*;
+        use proptest::prelude::*;
+
+        fn key(raw: &[u8]) -> Vec<u32> {
+            DexFile::mutf8_ordering_key(raw)
+        }
+
+        #[test]
+        fn ascii_nul_overlong_and_surrogates() {
+            assert_eq!(key(b"A"), vec![0x41]);
+            assert_eq!(key(&[0xC0, 0x80]), vec![0x0000]); // MUTF-8 NUL
+            assert_eq!(key(&[0xC1, 0x81]), vec![0x0041]); // overlong 'A'
+            assert_eq!(key(&[0xED, 0xBF, 0xBF]), vec![0xDFFF]); // lone low surrogate
+            assert_eq!(key(&[0xED, 0xA0, 0x81]), vec![0xD801]);
+            // Valid CESU-8 pair → assembled supplementary.
+            assert_eq!(key(&[0xED, 0xA0, 0xBD, 0xED, 0xB8, 0x80]), vec![0x1_F600]);
+        }
+
+        #[test]
+        fn truncated_leads_read_nul_terminator_like_art() {
+            // A multibyte lead truncated at end-of-content reads the NUL
+            // terminator (matches ART), yielding a real code unit.
+            assert_eq!(key(&[0xC2]), vec![0x0080]);
+            assert_eq!(key(&[0xED, 0xA0]), vec![0xD800]);
+        }
+
+        #[test]
+        fn collisions_are_art_faithful() {
+            // ART decodes these to equal values, so the key collides them
+            // (the point — droidsaw and ART must agree).
+            assert_eq!(key(&[0xC1, 0x81]), key(b"A"));
+            assert_eq!(key(&[0x80]), key(&[0xC0, 0x80]));
+            assert_ne!(key(&[0xED, 0xA0, 0x80]), key(&[0xED, 0xA0, 0x81]));
+        }
+
+        fn encode_mutf8(s: &str) -> Vec<u8> {
+            let push3 = |out: &mut Vec<u8>, u: u32| {
+                out.push(0xE0 | (u >> 12) as u8);
+                out.push(0x80 | ((u >> 6) & 0x3F) as u8);
+                out.push(0x80 | (u & 0x3F) as u8);
+            };
+            let mut out = Vec::new();
+            for ch in s.chars() {
+                let cp = ch as u32;
+                if cp == 0 {
+                    out.extend_from_slice(&[0xC0, 0x80]);
+                } else if cp < 0x80 {
+                    out.push(cp as u8);
+                } else if cp < 0x800 {
+                    out.push(0xC0 | (cp >> 6) as u8);
+                    out.push(0x80 | (cp & 0x3F) as u8);
+                } else if cp < 0x1_0000 {
+                    push3(&mut out, cp);
+                } else {
+                    let v = cp - 0x1_0000;
+                    push3(&mut out, 0xD800 + (v >> 10));
+                    push3(&mut out, 0xDC00 + (v & 0x3FF));
+                }
+            }
+            out
+        }
+
+        proptest! {
+            /// Differential: the key equals the independent code-point
+            /// sequence (`chars()`) for every valid MUTF-8 string.
+            #[test]
+            fn key_matches_codepoints_on_valid_mutf8(s in ".*") {
+                let got = key(&encode_mutf8(&s));
+                let want: Vec<u32> = s.chars().map(|c| c as u32).collect();
+                prop_assert_eq!(got, want);
+            }
+        }
     }
 
     #[test]

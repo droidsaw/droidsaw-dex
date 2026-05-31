@@ -1331,6 +1331,7 @@ pub fn collect_spec_invariant_findings(dex: &DexFile) -> Vec<Finding> {
         let (id, severity, detail) = match failure.kind {
             ParseFailureKind::OutOfOrder { pool } => {
                 let pool_name = match pool {
+                    PoolKind::StringIds => "string_ids",
                     PoolKind::TypeIds => "type_ids",
                     PoolKind::ProtoIds => "proto_ids",
                     PoolKind::FieldIds => "field_ids",
