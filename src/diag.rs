@@ -21,7 +21,7 @@ use crate::cfg::{BlockIdx, Cfg};
 use crate::decode;
 use crate::ids::ClassDefItem;
 use crate::optimize;
-use crate::parser::{DexFile, ParseFailureKind};
+use crate::parser::{DexFile, ParseFailureKind, PoolKind};
 use crate::ssa::SsaBody;
 use crate::structure::{self, CatchClause, MultiArm, Stmt};
 use crate::sugar;
@@ -336,6 +336,28 @@ pub const FINDING_ID_DEX_DETECTOR_INDETERMINATE: &str = "DEX_DETECTOR_INDETERMIN
 /// resolved at every consumer; the signal is "this DEX is structurally
 /// anomalous and warrants manual review".
 pub const FINDING_ID_DEX_DUPLICATE_CLASS_DEF: &str = "DEX_DUPLICATE_CLASS_DEF";
+
+/// Stable finding id for an ID pool (`string_ids` / `type_ids` /
+/// `proto_ids` / `field_ids` / `method_ids`) that is not strictly
+/// ascending by its DEX-spec sort key with no duplicates. The parser
+/// records the first violation per pool as
+/// [`crate::parser::ParseFailureKind::OutOfOrder`]; surfacing it lets an
+/// operator see that droidsaw's O(1) index view may diverge from a
+/// re-sorting reader (ART / a differential parser) — the
+/// index-vs-iteration evasion primitive.
+pub const FINDING_ID_DEX_POOL_OUT_OF_ORDER: &str = "DEX_POOL_OUT_OF_ORDER";
+
+/// Stable finding id for a `class_def` that appears before its
+/// superclass or an implemented interface (DEX-spec topological order),
+/// recorded as
+/// [`crate::parser::ParseFailureKind::ClassDefOutOfTopologicalOrder`].
+pub const FINDING_ID_DEX_CLASS_DEF_TOPO_ORDER: &str = "DEX_CLASS_DEF_TOPO_ORDER";
+
+/// Stable finding id for a DEX reserved "(must be zero)" field
+/// (`map_item.unused` / `method_handle_item.unused`) carrying a non-zero
+/// value, recorded as
+/// [`crate::parser::ParseFailureKind::ReservedBitsNonZero`].
+pub const FINDING_ID_DEX_RESERVED_BITS_NONZERO: &str = "DEX_RESERVED_BITS_NONZERO";
 
 /// `DEX_CLASS_DATA_OFF_COLLISION` — multi-class_def collision on
 /// `class_data_off`. Two or more `class_def_item` rows with DIFFERENT
@@ -1293,6 +1315,64 @@ pub fn collect_duplicate_class_def_findings(dex: &DexFile) -> Vec<Finding> {
     out
 }
 
+/// Surface the §H-1/§H-5/§H-8 spec-invariant records
+/// (`ParseFailureKind::OutOfOrder`, `ClassDefOutOfTopologicalOrder`,
+/// `ReservedBitsNonZero`) as typed Findings on the audit envelope.
+/// These poison the emit round-trip gate via the generic
+/// `parse_errors.is_empty()` check, but without a collector they were
+/// invisible to triage — unlike `DuplicateClassDef` and the code-item
+/// invariants, which each surface a Finding. Each record becomes one
+/// Finding carrying its locus (`ParseFailure.offset` is a pool index for
+/// `OutOfOrder` / a `class_defs` index for the topo violation / a byte
+/// offset for the reserved-bits violation, per each variant's contract).
+pub fn collect_spec_invariant_findings(dex: &DexFile) -> Vec<Finding> {
+    let mut out: Vec<Finding> = Vec::new();
+    for failure in &dex.parse_errors {
+        let (id, severity, detail) = match failure.kind {
+            ParseFailureKind::OutOfOrder { pool } => {
+                let pool_name = match pool {
+                    PoolKind::TypeIds => "type_ids",
+                    PoolKind::ProtoIds => "proto_ids",
+                    PoolKind::FieldIds => "field_ids",
+                    PoolKind::MethodIds => "method_ids",
+                };
+                (
+                    FINDING_ID_DEX_POOL_OUT_OF_ORDER,
+                    Severity::Medium,
+                    format!(
+                        "{pool_name} pool is not strictly ascending by its DEX-spec sort key from index {}; \
+                         droidsaw's index view may diverge from a re-sorting reader (ART / differential parser)",
+                        failure.offset,
+                    ),
+                )
+            }
+            ParseFailureKind::ClassDefOutOfTopologicalOrder => (
+                FINDING_ID_DEX_CLASS_DEF_TOPO_ORDER,
+                Severity::Medium,
+                format!(
+                    "class_def at class_defs[{}] precedes its superclass or an implemented interface \
+                     (DEX-spec topological order violated); single-pass hierarchy builders may compute wrong results",
+                    failure.offset,
+                ),
+            ),
+            ParseFailureKind::ReservedBitsNonZero => (
+                FINDING_ID_DEX_RESERVED_BITS_NONZERO,
+                Severity::Low,
+                format!(
+                    "reserved (must-be-zero) field at byte offset 0x{:x} is non-zero \
+                     (map_item.unused / method_handle_item.unused)",
+                    failure.offset,
+                ),
+            ),
+            _ => continue,
+        };
+        let mut finding = Finding::new(id, Layer::Dex, severity, detail);
+        finding.confidence = Confidence::Verified;
+        out.push(finding);
+    }
+    out
+}
+
 /// Surface multi-`class_def` collisions on `class_data_off`. Walks
 /// `dex.class_defs` once, groups by non-zero `class_data_off`, emits
 /// one `DEX_CLASS_DATA_OFF_COLLISION` Finding per group with ≥2 rows.
@@ -1623,6 +1703,39 @@ mod tests {
         });
         regions.sort();
         assert_eq!(regions, vec![1, 2]);
+    }
+
+    #[test]
+    fn collect_spec_invariant_findings_surfaces_each_kind() {
+        let data = include_bytes!("../tests/fixtures/classes.dex");
+        let mut dex = crate::DexFile::parse(data, None).expect("parse fixture");
+        // Clean d8 fixture → no spec-invariant records.
+        assert!(
+            collect_spec_invariant_findings(&dex).is_empty(),
+            "clean fixture must not surface spec-invariant findings"
+        );
+        // Plant one record of each new kind.
+        dex.parse_errors.push(crate::parser::ParseFailure {
+            kind: ParseFailureKind::OutOfOrder { pool: PoolKind::MethodIds },
+            offset: 7,
+        });
+        dex.parse_errors.push(crate::parser::ParseFailure {
+            kind: ParseFailureKind::ClassDefOutOfTopologicalOrder,
+            offset: 3,
+        });
+        dex.parse_errors.push(crate::parser::ParseFailure {
+            kind: ParseFailureKind::ReservedBitsNonZero,
+            offset: 0x40,
+        });
+        let findings = collect_spec_invariant_findings(&dex);
+        assert_eq!(findings.len(), 3, "one Finding per record; got {findings:?}");
+        assert!(findings.iter().any(|f| f.id == FINDING_ID_DEX_POOL_OUT_OF_ORDER));
+        assert!(findings.iter().any(|f| f.id == FINDING_ID_DEX_CLASS_DEF_TOPO_ORDER));
+        assert!(findings.iter().any(|f| f.id == FINDING_ID_DEX_RESERVED_BITS_NONZERO));
+        // The method_ids pool name reaches the detail for triage.
+        assert!(findings
+            .iter()
+            .any(|f| f.detail.contains("method_ids")));
     }
 
     #[test]

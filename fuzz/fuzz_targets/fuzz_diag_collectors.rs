@@ -107,4 +107,12 @@ fuzz_target!(|data: &[u8]| {
         di.len(),
         parse_errors_len,
     );
+
+    let si = droidsaw_dex::diag::collect_spec_invariant_findings(&dex);
+    assert!(
+        si.len() <= parse_errors_len,
+        "collect_spec_invariant_findings emitted {} > parse_errors.len() {}",
+        si.len(),
+        parse_errors_len,
+    );
 });
