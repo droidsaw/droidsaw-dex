@@ -95,6 +95,7 @@ pub mod r8_inversion;
 pub mod sdk_inventory;
 pub mod signatures;
 pub mod smali;
+pub mod spr;
 pub mod ssa;
 pub mod static_field_lookup;
 pub mod structure;
