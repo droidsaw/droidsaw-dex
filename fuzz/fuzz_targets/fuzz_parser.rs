@@ -155,14 +155,16 @@ fuzz_target!(|data: &[u8]| {
         let _ = dex.super_class_chain_terminator(cd.class_idx);
     }
 
-    // Inv 7: the SPR encoder never panics on parser output, at either
+    // Inv 7: the SPR encoder never panics on parser output, at any
     // level. A net-new public entrypoint over attacker-controlled DEX —
-    // exercise both rungs over every decoded method. A method whose
+    // exercise all three rungs over every decoded method. A method whose
     // decode desynced bails to `Unencodable::DecodeDesync`, which must
-    // also be panic-free.
+    // also be panic-free. NR additionally drives the in-dex supertype
+    // walker (cycle/cap guards) over the adversarial class hierarchy.
     use droidsaw_dex::spr::{encode_method, Level};
     for code in dex.code_items.values() {
         let _ = encode_method(&dex, code, Level::Bc);
         let _ = encode_method(&dex, code, Level::Ar);
+        let _ = encode_method(&dex, code, Level::Nr);
     }
 });
