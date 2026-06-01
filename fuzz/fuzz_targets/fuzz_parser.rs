@@ -154,4 +154,15 @@ fuzz_target!(|data: &[u8]| {
     for cd in &dex.class_defs {
         let _ = dex.super_class_chain_terminator(cd.class_idx);
     }
+
+    // Inv 7: the SPR encoder never panics on parser output, at either
+    // level. A net-new public entrypoint over attacker-controlled DEX —
+    // exercise both rungs over every decoded method. A method whose
+    // decode desynced bails to `Unencodable::DecodeDesync`, which must
+    // also be panic-free.
+    use droidsaw_dex::spr::{encode_method, Level};
+    for code in dex.code_items.values() {
+        let _ = encode_method(&dex, code, Level::Bc);
+        let _ = encode_method(&dex, code, Level::Ar);
+    }
 });
