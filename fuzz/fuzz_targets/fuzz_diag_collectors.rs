@@ -62,9 +62,12 @@ fuzz_target!(|data: &[u8]| {
         .fold(0usize, |acc, n| acc.saturating_add(n));
 
     let hm = droidsaw_dex::diag::collect_header_map_findings(&dex);
+    // Structural cap: each of the 6 id-sections can emit at most two findings —
+    // a size disagreement AND an offset disagreement — so 6 * 2 = 12. (The
+    // mutually-exclusive map-unreadable early-return path emits exactly 1.)
     assert!(
-        hm.len() <= 7,
-        "collect_header_map_findings emitted {} findings; structural cap is 7",
+        hm.len() <= 12,
+        "collect_header_map_findings emitted {} findings; structural cap is 12 (2 per section x 6)",
         hm.len(),
     );
 

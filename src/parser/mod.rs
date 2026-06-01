@@ -565,6 +565,198 @@ pub enum SectionWalkError {
     },
 }
 
+/// Pairwise non-overlap gate over the six header id-sections. Two non-empty
+/// sections whose byte ranges `[off, off + count*stride)` intersect make the
+/// same bytes decode as two different item types — `DexFile::parse` would
+/// otherwise return `Ok` of a structurally-wrong IR with no signal (the
+/// header/map cross-check is size-only, and an attacker can zero `map_off` to
+/// suppress even that). Hard-reject: no IR built from aliased sections is
+/// trustworthy. **Map-independent by design** — derived from header fields
+/// alone, so it fires even when `map_off == 0`. Run before any id-section
+/// bytes are loaded (a pre-condition, not a post-hoc audit). Adjacent sections
+/// (`a.end == b.start`) do not overlap (ranges are half-open); `count == 0`
+/// sections claim no bytes and are skipped.
+fn check_id_section_overlap(header: &DexHeader) -> Result<()> {
+    // (name, offset, count, stride-in-bytes)
+    let sections: [(&'static str, u32, u32, usize); 6] = [
+        ("string_ids", header.string_ids_off, header.string_ids_size, STRING_ID_ITEM_SIZE),
+        ("type_ids", header.type_ids_off, header.type_ids_size, TYPE_ID_ITEM_SIZE),
+        ("proto_ids", header.proto_ids_off, header.proto_ids_size, PROTO_ID_ITEM_SIZE),
+        ("field_ids", header.field_ids_off, header.field_ids_size, FIELD_ID_ITEM_SIZE),
+        ("method_ids", header.method_ids_off, header.method_ids_size, METHOD_ID_ITEM_SIZE),
+        ("class_defs", header.class_defs_off, header.class_defs_size, CLASS_DEF_ITEM_SIZE),
+    ];
+
+    // (name, off, start, end) per non-empty section. `end` in u64 with
+    // saturating arithmetic: `count <= u32::MAX` and `stride <= 32`, so the
+    // true product is `< 2^37` and never saturates on real input; a saturated
+    // `end` would still be `> start`, so the overlap test stays sound.
+    let mut intervals: Vec<(&'static str, u32, u64, u64)> = Vec::with_capacity(6);
+    for (name, off, count, stride) in sections {
+        if count == 0 {
+            continue;
+        }
+        let start = u64::from(off);
+        let stride = u64::try_from(stride).unwrap_or(u64::MAX);
+        let end = start.saturating_add(u64::from(count).saturating_mul(stride));
+        intervals.push((name, off, start, end));
+    }
+
+    let map_present = header.map_off != 0;
+    for (i, &(na, off_a, sa, ea)) in intervals.iter().enumerate() {
+        for &(nb, off_b, sb, eb) in intervals.iter().skip(i.saturating_add(1)) {
+            // Half-open ranges: adjacent sections (`ea == sb`) do not overlap.
+            if sa < eb && sb < ea {
+                // Order the reported pair by start offset for a stable message.
+                let (section_a, a_off, a_end, section_b, b_off, b_end) = if sa <= sb {
+                    (na, off_a, ea, nb, off_b, eb)
+                } else {
+                    (nb, off_b, eb, na, off_a, ea)
+                };
+                return Err(DexError::SectionOverlap {
+                    section_a,
+                    a_off,
+                    a_end,
+                    section_b,
+                    b_off,
+                    b_end,
+                    map_present,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod overlap_check_tests {
+    use super::*;
+
+    /// All-zero header; tests set only the section fields under test.
+    fn base() -> DexHeader {
+        DexHeader {
+            magic: *b"dex\n035\0",
+            checksum: 0,
+            signature: [0; 20],
+            file_size: 0,
+            header_size: 112,
+            endian_tag: 0,
+            link_size: 0,
+            link_off: 0,
+            map_off: 0,
+            string_ids_size: 0,
+            string_ids_off: 0,
+            type_ids_size: 0,
+            type_ids_off: 0,
+            proto_ids_size: 0,
+            proto_ids_off: 0,
+            field_ids_size: 0,
+            field_ids_off: 0,
+            method_ids_size: 0,
+            method_ids_off: 0,
+            class_defs_size: 0,
+            class_defs_off: 0,
+            data_size: 0,
+            data_off: 0,
+        }
+    }
+
+    #[test]
+    fn disjoint_sections_ok() {
+        let mut h = base();
+        h.string_ids_off = 100; // [100, 116) stride 4
+        h.string_ids_size = 4;
+        h.type_ids_off = 200; // [200, 216)
+        h.type_ids_size = 4;
+        assert!(check_id_section_overlap(&h).is_ok());
+    }
+
+    #[test]
+    fn adjacent_sections_ok() {
+        // string_ids [100, 116); type_ids starts exactly at 116 — half-open,
+        // not an overlap. This is the normal contiguous DEX layout.
+        let mut h = base();
+        h.string_ids_off = 100;
+        h.string_ids_size = 4; // 4 * 4 = 16 bytes → ends at 116
+        h.type_ids_off = 116;
+        h.type_ids_size = 4;
+        assert!(check_id_section_overlap(&h).is_ok());
+    }
+
+    #[test]
+    fn exact_alias_errs() {
+        // field_ids and method_ids share an 8-byte item shape; aliasing their
+        // offsets overlaps the shared bytes.
+        let mut h = base();
+        h.field_ids_off = 300;
+        h.field_ids_size = 1; // [300, 308)
+        h.method_ids_off = 300;
+        h.method_ids_size = 1; // [300, 308)
+        assert!(matches!(
+            check_id_section_overlap(&h),
+            Err(DexError::SectionOverlap { .. })
+        ));
+    }
+
+    #[test]
+    fn partial_overlap_errs() {
+        // string_ids [100, 116); type_ids [112, 128) — they share [112, 116).
+        let mut h = base();
+        h.string_ids_off = 100;
+        h.string_ids_size = 4;
+        h.type_ids_off = 112;
+        h.type_ids_size = 4;
+        assert!(matches!(
+            check_id_section_overlap(&h),
+            Err(DexError::SectionOverlap { .. })
+        ));
+    }
+
+    #[test]
+    fn overlap_via_inflated_count_errs() {
+        // Offsets are adjacent, but string_ids declares so many entries that
+        // its range extends into type_ids — overlap via count, not a moved off.
+        let mut h = base();
+        h.string_ids_off = 100;
+        h.string_ids_size = 100; // 100 * 4 = 400 bytes → [100, 500)
+        h.type_ids_off = 116;
+        h.type_ids_size = 4;
+        assert!(matches!(
+            check_id_section_overlap(&h),
+            Err(DexError::SectionOverlap { .. })
+        ));
+    }
+
+    #[test]
+    fn zero_size_section_claims_no_bytes() {
+        // A zero-count section aliased onto a populated one is not an overlap —
+        // it spans no bytes.
+        let mut h = base();
+        h.field_ids_off = 300;
+        h.field_ids_size = 1;
+        h.method_ids_off = 300; // aliased offset…
+        h.method_ids_size = 0; // …but empty range
+        assert!(check_id_section_overlap(&h).is_ok());
+    }
+
+    #[test]
+    fn reports_pair_ordered_by_offset() {
+        let mut h = base();
+        h.method_ids_off = 500;
+        h.method_ids_size = 8; // [500, 564)
+        h.field_ids_off = 504;
+        h.field_ids_size = 1; // [504, 512) — inside method_ids
+        match check_id_section_overlap(&h) {
+            Err(DexError::SectionOverlap { section_a, a_off, section_b, b_off, .. }) => {
+                // Lower offset first regardless of declaration order.
+                assert_eq!((section_a, a_off), ("method_ids", 500));
+                assert_eq!((section_b, b_off), ("field_ids", 504));
+            }
+            other => panic!("expected SectionOverlap, got {other:?}"),
+        }
+    }
+}
+
 /// Verify the completeness gauge over a `Vec<SectionRegion>`. Returns
 /// `Ok(())` iff the regions form a total tiling of `[section_start,
 /// section_end)` with no overlaps or gaps.
@@ -1085,6 +1277,10 @@ impl DexFile {
     fn parse_inner(data: &[u8]) -> Result<Self> {
         let header = DexHeader::parse(data)?;
         header.verify_checksum(data)?;
+        // Structural pre-condition: the six id-sections must not alias each
+        // other. Gated here — before any id-section bytes are loaded — so a
+        // wrong-but-bounded IR from overlapping sections is never constructed.
+        check_id_section_overlap(&header)?;
         // SHA-1 is NOT validated by verify_checksum (which only enforces
         // Adler-32). Compute SHA-1 separately so we can attribute non-
         // canonical-input-SHA files via CanonicalTransform::InputChecksumNormalized

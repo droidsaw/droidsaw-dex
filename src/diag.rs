@@ -58,6 +58,21 @@ pub const FINDING_ID_DEX_HEADER_MAP_DISAGREEMENT: &str = "DEX_HEADER_MAP_DISAGRE
 /// when the truth is "map is unreadable."
 pub const FINDING_ID_DEX_MAP_LIST_UNREADABLE: &str = "DEX_MAP_LIST_UNREADABLE";
 
+/// Stable finding id for a header-vs-map_list section *offset* disagreement.
+///
+/// Companion to [`FINDING_ID_DEX_HEADER_MAP_DISAGREEMENT`] (which covers
+/// *size* divergence): fires when a section's `header.{name}_off` differs from
+/// the `MapEntry.offset` the map_list records for the same `type_code`. The
+/// runtime resolves each section by the header offset, so a divergent map
+/// offset means a map_list-navigating tool reads a different byte range than
+/// the runtime — a parser-differential primitive. Higher severity than the
+/// size disagreement: a moved offset re-points a whole section. The stronger
+/// case (two sections physically aliasing) is hard-rejected at parse time as
+/// `DexError::SectionOverlap`; this finding covers the offset-moved-but-not-
+/// overlapping case where best-effort parse is still useful.
+pub const FINDING_ID_DEX_HEADER_MAP_OFFSET_DISAGREEMENT: &str =
+    "DEX_HEADER_MAP_OFFSET_DISAGREEMENT";
+
 /// Stable finding id for a per-string declared-vs-scanned UTF-16
 /// length disagreement in the DEX string pool.
 ///
@@ -434,37 +449,62 @@ pub fn collect_header_map_findings(dex: &DexFile) -> Vec<Finding> {
 
     let h = &dex.header;
     let map = &dex.map_entries;
-    let pairs: &[(&'static str, u16, u32)] = &[
-        ("string_ids", TYPE_STRING_ID_ITEM, h.string_ids_size),
-        ("type_ids", TYPE_TYPE_ID_ITEM, h.type_ids_size),
-        ("proto_ids", TYPE_PROTO_ID_ITEM, h.proto_ids_size),
-        ("field_ids", TYPE_FIELD_ID_ITEM, h.field_ids_size),
-        ("method_ids", TYPE_METHOD_ID_ITEM, h.method_ids_size),
-        ("class_defs", TYPE_CLASS_DEF_ITEM, h.class_defs_size),
+    // (name, type_code, header_size, header_off)
+    let pairs: &[(&'static str, u16, u32, u32)] = &[
+        ("string_ids", TYPE_STRING_ID_ITEM, h.string_ids_size, h.string_ids_off),
+        ("type_ids", TYPE_TYPE_ID_ITEM, h.type_ids_size, h.type_ids_off),
+        ("proto_ids", TYPE_PROTO_ID_ITEM, h.proto_ids_size, h.proto_ids_off),
+        ("field_ids", TYPE_FIELD_ID_ITEM, h.field_ids_size, h.field_ids_off),
+        ("method_ids", TYPE_METHOD_ID_ITEM, h.method_ids_size, h.method_ids_off),
+        ("class_defs", TYPE_CLASS_DEF_ITEM, h.class_defs_size, h.class_defs_off),
     ];
 
-    for (name, type_code, header_value) in pairs {
-        let map_value: Option<u32> = map
-            .iter()
-            .find(|m| m.type_code == *type_code)
-            .map(|m| m.size);
+    for (name, type_code, header_value, header_off) in pairs {
+        let map_entry = map.iter().find(|m| m.type_code == *type_code);
+
+        // Size disagreement (Medium). A `0`-size section with no map entry is
+        // the well-formed "section absent" case and is skipped.
+        let map_value: Option<u32> = map_entry.map(|m| m.size);
         let mismatch_map_str = match (header_value, map_value) {
-            (0, None) => continue,
-            (_, None) => "MISSING".to_string(),
-            (h_val, Some(m_val)) if *h_val == m_val => continue,
-            (_, Some(m_val)) => m_val.to_string(),
+            (0, None) => None,
+            (_, None) => Some("MISSING".to_string()),
+            (h_val, Some(m_val)) if *h_val == m_val => None,
+            (_, Some(m_val)) => Some(m_val.to_string()),
         };
-        let mut finding = Finding::new(
-            FINDING_ID_DEX_HEADER_MAP_DISAGREEMENT,
-            Layer::Dex,
-            Severity::Medium,
-            format!(
-                "section={name} header={header_value} map={mismatch_map_str}"
-            ),
-        )
-        .with_extra(format!("type_code=0x{type_code:04x}"));
-        finding.confidence = Confidence::Verified;
-        out.push(finding);
+        if let Some(map_str) = mismatch_map_str {
+            let mut finding = Finding::new(
+                FINDING_ID_DEX_HEADER_MAP_DISAGREEMENT,
+                Layer::Dex,
+                Severity::Medium,
+                format!("section={name} header={header_value} map={map_str}"),
+            )
+            .with_extra(format!("type_code=0x{type_code:04x}"));
+            finding.confidence = Confidence::Verified;
+            out.push(finding);
+        }
+
+        // Offset disagreement (High). Only when the map entry is present and
+        // its offset diverges from the header — a moved section the runtime
+        // resolves by `header_off` while a map-navigating tool reads `map.off`.
+        // The aliasing extreme (sections physically overlapping) is hard-
+        // rejected earlier as `DexError::SectionOverlap`; this covers the
+        // moved-but-not-overlapping case where best-effort parse still helps.
+        if let Some(m) = map_entry {
+            if m.offset != *header_off {
+                let mut finding = Finding::new(
+                    FINDING_ID_DEX_HEADER_MAP_OFFSET_DISAGREEMENT,
+                    Layer::Dex,
+                    Severity::High,
+                    format!(
+                        "section={name} header_off={header_off:#x} map_off={:#x} (runtime uses header_off)",
+                        m.offset
+                    ),
+                )
+                .with_extra(format!("type_code=0x{type_code:04x}"));
+                finding.confidence = Confidence::Verified;
+                out.push(finding);
+            }
+        }
     }
 
     out

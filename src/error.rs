@@ -34,6 +34,27 @@ pub enum DexError {
     #[error("offset {offset:#x} out of bounds (file size: {file_size:#x})")]
     OffsetOutOfBounds { offset: u32, file_size: usize },
 
+    /// Two header id-sections claim overlapping byte ranges, so the same bytes
+    /// would decode as two different item types. The runtime resolves each
+    /// section by its own header offset, so a tool that parses this file holds
+    /// a different table than the runtime executes — behavior is undefined
+    /// across Dalvik/ART. No IR built from aliased sections is trustworthy, so
+    /// the parse is hard-rejected (detected before any id-section is loaded).
+    #[error(
+        "id-section overlap: {section_a} [{a_off:#x}..{a_end:#x}) overlaps \
+         {section_b} [{b_off:#x}..{b_end:#x}); runtime resolution differs from \
+         tool view (undefined across Dalvik/ART); map_list_present={map_present}"
+    )]
+    SectionOverlap {
+        section_a: &'static str,
+        a_off: u32,
+        a_end: u64,
+        section_b: &'static str,
+        b_off: u32,
+        b_end: u64,
+        map_present: bool,
+    },
+
     #[error("read error at offset {offset:#x}: {source}")]
     ScrollRead {
         offset: usize,

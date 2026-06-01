@@ -29,7 +29,10 @@ const OFF_CHECKSUM: usize = 8;
 const OFF_FILE_SIZE: usize = 32;
 const OFF_MAP: usize = 52;
 const OFF_STRING_IDS_OFF: usize = 60;
+const OFF_TYPE_IDS_OFF: usize = 68;
+const OFF_FIELD_IDS_OFF: usize = 84;
 const OFF_METHOD_IDS_OFF: usize = 92;
+const MAP_TYPE_METHOD_ID_ITEM: u16 = 0x0005;
 
 fn get_u32(buf: &[u8], off: usize) -> u32 {
     let mut b = [0u8; 4];
@@ -47,6 +50,25 @@ fn reseal(buf: &mut [u8]) {
     let file_size = get_u32(buf, OFF_FILE_SIZE) as usize;
     let checksum = adler2::adler32_slice(&buf[12..file_size]);
     put_u32(buf, OFF_CHECKSUM, checksum);
+}
+
+/// Patch the `offset` field of the `map_list` entry for `type_code`, leaving
+/// the header's own offset field untouched. The map_list is at `header.map_off`
+/// as `[u32 count][map_item × count]`, each `map_item` 12 bytes
+/// `{u16 type, u16 unused, u32 size, u32 offset}` (offset at item+8). Returns
+/// true if an entry was found and patched.
+fn patch_map_entry_offset(buf: &mut [u8], type_code: u16, new_off: u32) -> bool {
+    let map_off = get_u32(buf, OFF_MAP) as usize;
+    let count = get_u32(buf, map_off) as usize;
+    for i in 0..count {
+        let item = map_off + 4 + i * 12;
+        let tc = u16::from_le_bytes([buf[item], buf[item + 1]]);
+        if tc == type_code {
+            put_u32(buf, item + 8, new_off);
+            return true;
+        }
+    }
+    false
 }
 
 proptest! {
@@ -95,18 +117,16 @@ proptest! {
     }
 }
 
-/// RED until aliased-section-offset detection lands.
+/// Aliased id-section offsets are hard-rejected at parse time.
 ///
 /// `field_id_item` and `method_id_item` share an 8-byte on-disk shape, so
-/// repointing `method_ids_off` at the `field_ids` region (offset only — sizes
-/// untouched, so no size disagreement) makes the same bytes parse as both. The
-/// parser currently returns `Ok` of a wrong method table with no `Err`, no
-/// `parse_errors`, and no Finding — the header/map cross-check compares sizes
-/// only and never inspects offsets. This asserts the desired invariant — the
-/// aliasing is surfaced — and flips to passing once the offset cross-check is
-/// added; un-ignore it then.
+/// repointing `method_ids_off` at the `field_ids` region makes the same bytes
+/// decode as both. With `method_ids_size` (8) unchanged, the method_ids range
+/// `[field_off, field_off + 8*8)` overlaps the field_ids range
+/// `[field_off, field_off + 1*8)`, so the parse-time pairwise check rejects it
+/// as `DexError::SectionOverlap` before any id-section is loaded — no `Ok` of a
+/// wrong method table can escape.
 #[test]
-#[ignore = "RED: DexFile::parse accepts aliased id-section offsets with no signal; un-ignore when the offset cross-check lands"]
 fn aliased_method_ids_offset_is_surfaced() {
     let base = DexFile::parse(DEX, None).expect("baseline fixture parses");
     let field_off = base.header.field_ids_off;
@@ -115,14 +135,105 @@ fn aliased_method_ids_offset_is_surfaced() {
     put_u32(&mut m, OFF_METHOD_IDS_OFF, field_off); // method_ids_off := field_ids_off
     reseal(&mut m);
 
-    let dex = DexFile::parse(&m, None).expect("tolerant parse stays Ok");
-    let findings = droidsaw_dex::diag::collect_header_map_findings(&dex);
-    let surfaced = !dex.parse_errors.is_empty()
-        || findings.iter().any(|f| f.detail.contains("method_ids"));
+    let r = DexFile::parse(&m, None);
     assert!(
-        surfaced,
-        "aliased method_ids_off must be surfaced via parse_errors or a header/map finding; \
-         parse_errors={:?} findings={findings:?}",
-        dex.parse_errors
+        matches!(r, Err(DexError::SectionOverlap { .. })),
+        "aliased method_ids_off must hard-reject as SectionOverlap, got {r:?}"
     );
+}
+
+/// The overlap check is map-independent: zeroing `map_off` (which the
+/// header/map cross-check needs to fire) does NOT let the aliased layout
+/// through. This is the non-bypassable floor — `DexError::SectionOverlap` still
+/// fires, and the error records `map_present=false`.
+#[test]
+fn aliased_offset_with_no_map_list_still_rejects() {
+    let base = DexFile::parse(DEX, None).expect("baseline fixture parses");
+    let field_off = base.header.field_ids_off;
+
+    let mut m = DEX.to_vec();
+    put_u32(&mut m, OFF_METHOD_IDS_OFF, field_off);
+    put_u32(&mut m, OFF_MAP, 0); // no map_list to cross-check against
+    reseal(&mut m);
+
+    let r = DexFile::parse(&m, None);
+    assert!(
+        matches!(r, Err(DexError::SectionOverlap { map_present: false, .. })),
+        "overlap with map_off=0 must still hard-reject (map-independent), got {r:?}"
+    );
+}
+
+/// The check is general, not field/method-specific: overlapping `type_ids`
+/// onto `string_ids` is rejected the same way.
+#[test]
+fn aliased_type_ids_onto_string_ids_rejects() {
+    let base = DexFile::parse(DEX, None).expect("baseline fixture parses");
+    let string_off = base.header.string_ids_off;
+
+    let mut m = DEX.to_vec();
+    put_u32(&mut m, OFF_TYPE_IDS_OFF, string_off); // type_ids_off := string_ids_off
+    reseal(&mut m);
+
+    let r = DexFile::parse(&m, None);
+    assert!(
+        matches!(r, Err(DexError::SectionOverlap { .. })),
+        "type_ids aliased onto string_ids must hard-reject, got {r:?}"
+    );
+}
+
+/// A *moved* (but non-overlapping) section offset — the header still points at
+/// the real section so the parse succeeds, but the map_list records a different
+/// offset — surfaces as a High `DEX_HEADER_MAP_OFFSET_DISAGREEMENT` Finding
+/// (the recoverable, best-effort-parse case that complements the hard-reject).
+#[test]
+fn map_offset_disagreement_emits_high_finding() {
+    use droidsaw_dex::diag::{
+        collect_header_map_findings, FINDING_ID_DEX_HEADER_MAP_OFFSET_DISAGREEMENT,
+    };
+    use droidsaw_common::finding::Severity;
+
+    let real_method_off = get_u32(DEX, OFF_METHOD_IDS_OFF);
+    let mut m = DEX.to_vec();
+    // Header unchanged (parse uses the real offset, stays Ok); only the map
+    // entry diverges, by a benign in-bounds delta that introduces no overlap.
+    assert!(
+        patch_map_entry_offset(&mut m, MAP_TYPE_METHOD_ID_ITEM, real_method_off + 4),
+        "fixture must contain a method_ids map entry"
+    );
+    reseal(&mut m);
+
+    let dex = DexFile::parse(&m, None).expect("header still points at real sections → Ok");
+    let findings = collect_header_map_findings(&dex);
+    let hit = findings.iter().find(|f| {
+        f.id == FINDING_ID_DEX_HEADER_MAP_OFFSET_DISAGREEMENT && f.detail.contains("method_ids")
+    });
+    let hit = hit.unwrap_or_else(|| {
+        panic!("expected a method_ids offset-disagreement finding; got {findings:?}")
+    });
+    assert_eq!(hit.severity, Severity::High, "offset disagreement is High");
+}
+
+proptest! {
+    /// No-panic invariant on the new overlap path: an arbitrary `method_ids_off`
+    /// — in-bounds, out-of-bounds, aliasing, or partially overlapping any other
+    /// section — must leave `DexFile::parse` returning a typed result, never a
+    /// panic. proptest fails the case on any panic, so the assertion is implicit
+    /// in completing the call; the explicit check just pins that a value landing
+    /// on the field_ids region is rejected as overlap (not silently accepted).
+    #[test]
+    fn arbitrary_method_ids_off_never_panics(off in any::<u32>()) {
+        let mut m = DEX.to_vec();
+        let field_off = get_u32(&m, OFF_FIELD_IDS_OFF);
+        put_u32(&mut m, OFF_METHOD_IDS_OFF, off);
+        reseal(&mut m);
+        let r = DexFile::parse(&m, None);
+        if off == field_off {
+            prop_assert!(
+                matches!(r, Err(DexError::SectionOverlap { .. })),
+                "aliasing field_ids must be SectionOverlap, got {r:?}"
+            );
+        }
+        // Any other value: the only requirement is no panic — reaching here is
+        // the assertion.
+    }
 }

@@ -427,10 +427,15 @@ mod tests {
                 );
             }
             (Err(prod_err), Ok(oracle_shape)) => {
-                // Oracle more permissive. Checksum mismatch is expected (oracle
-                // is structural-only; production verifies Adler-32).
+                // Oracle more permissive. The naive oracle is structural-only:
+                // it does not verify the Adler-32 checksum, nor does it model
+                // id-section non-overlap. Production rejects both, so a
+                // `ChecksumMismatch` or `SectionOverlap` here is production
+                // legitimately stricter than the oracle, not a divergence.
                 let prod_err_str = format!("{prod_err:?}");
-                if !prod_err_str.contains("ChecksumMismatch") {
+                if !prod_err_str.contains("ChecksumMismatch")
+                    && !prod_err_str.contains("SectionOverlap")
+                {
                     panic!(
                         "oracle accepted {label} but production Err({prod_err:?})\n\
                          oracle_shape.string_ids_size={}, .type_ids_size={}, .class_defs_size={}",
