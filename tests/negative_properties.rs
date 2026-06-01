@@ -213,6 +213,52 @@ fn map_offset_disagreement_emits_high_finding() {
     assert_eq!(hit.severity, Severity::High, "offset disagreement is High");
 }
 
+/// Paired benign/adversarial fixtures, both built from the same source
+/// (`fixtures/adversarial/section_offset_overlap/src.java`, class
+/// `SectionOverlap`; see that directory's `README.md` for the build recipe +
+/// the cross-tool differential against dexdump/jadx). This encodes the honest
+/// scope as one hermetic test: the SAME parser accepts the benign layout with a
+/// correct inventory (`marker` is a FIELD, `sensitive` is a method) AND
+/// hard-rejects the one-field-aliased variant (`method_ids_off := field_ids_off`)
+/// as `SectionOverlap`. The committed `.dex` blobs lock the behavior in even if
+/// the SDK-dependent generator can't run.
+#[test]
+fn section_overlap_paired_benign_accepted_adversarial_rejected() {
+    // Benign variant: parses Ok with the true inventory.
+    let base = include_bytes!("fixtures/adversarial/section_offset_overlap/base.dex");
+    let dex = DexFile::parse(base, None).expect("base.dex parses");
+    assert!(
+        dex.parse_errors.is_empty(),
+        "base.dex parse_errors: {:?}",
+        dex.parse_errors
+    );
+    let name = |idx: droidsaw_dex::ids::StringIdx| -> &str {
+        dex.strings
+            .get(idx.0 as usize)
+            .map(|s| s.as_str_lossy())
+            .unwrap_or("<oob>")
+    };
+    let method_names: Vec<&str> = dex.methods.iter().map(|m| name(m.name_idx)).collect();
+    let field_names: Vec<&str> = dex.fields.iter().map(|f| name(f.name_idx)).collect();
+    assert!(
+        method_names.contains(&"sensitive") && method_names.contains(&"exec"),
+        "benign inventory must list `sensitive` + `Runtime.exec`: {method_names:?}"
+    );
+    assert!(
+        field_names.contains(&"marker") && !method_names.contains(&"marker"),
+        "`marker` must be a FIELD, never a method, in the benign file: fields={field_names:?} methods={method_names:?}"
+    );
+
+    // Adversarial variant: the same parser hard-rejects the aliased layout.
+    let overlap =
+        include_bytes!("fixtures/adversarial/section_offset_overlap/method_ids_aliases_field_ids.dex");
+    let r = DexFile::parse(overlap, None);
+    assert!(
+        matches!(r, Err(DexError::SectionOverlap { .. })),
+        "overlap fixture must hard-reject as SectionOverlap, got {r:?}"
+    );
+}
+
 proptest! {
     /// No-panic invariant on the new overlap path: an arbitrary `method_ids_off`
     /// — in-bounds, out-of-bounds, aliasing, or partially overlapping any other
