@@ -201,10 +201,38 @@ pub struct DexObfuscationFeatures {
     pub string_pool_entropy_bimodality: f32,
     /// Header-level structural anomalies; see [`DexHeaderAnomalies`].
     pub dex_header_anomalies: DexHeaderAnomalies,
+    /// Count of non-shadowed class definitions whose type descriptor
+    /// begins with the app's declared-package prefix
+    /// `"L" + main_package.replace('.', '/') + "/"` — formally
+    /// `|{ c : !shadowed(c) ∧ descriptor(c).starts_with(P) }|`, the
+    /// number of classes that retained the app namespace (Wermke
+    /// main-package isolation). `Some` iff a non-empty main package was
+    /// supplied; `None` otherwise (e.g. the byte-level fallback path).
+    ///
+    /// Invariant `0 <= main_package_class_count <= class_count`, both
+    /// bounds realizable. This is a **structural retention count, not
+    /// an obfuscation count**: under default-mode R8 an app's
+    /// *obfuscated* classes flatten to the root package and leave this
+    /// prefix, so a low retained count on a large app is itself the
+    /// flattening tell. Per-app obfuscation is not soundly measurable
+    /// by prefix (the evidence leaves the namespace); that signal is
+    /// deferred.
+    pub main_package_class_count: Option<usize>,
 }
 
 /// Extract obfuscation features from a parsed `DexFile`. Pure
-/// IR consumer; never panics.
+/// IR consumer; never panics. Prefer [`extract`] unless you have a
+/// declared main package to isolate.
+///
+/// `main_package` is the app's declared reverse-DNS package (the
+/// manifest `package` attribute), used to partition class names into
+/// the app's own package vs bundled-library packages — Wermke's
+/// main-package isolation, which strips the inflation that
+/// pre-obfuscated vendor SDKs add to the all-packages ratio. It is
+/// plain data (a `&str`), not manifest parsing; DEX owns no manifest
+/// knowledge. `None` ⇒ the main-package strata are `None`. The
+/// all-packages strata (`class_count` / `obfuscated_class_count`) are
+/// computed unconditionally either way.
 ///
 /// `VENDOR_PREFIXES` covers only vendors that have a stable DEX
 /// class-name prefix fingerprint. `PromonShield` and
@@ -215,7 +243,7 @@ pub struct DexObfuscationFeatures {
     clippy::indexing_slicing,
     reason = "PROOF: `runtime_hits: [u32; 6]` and `VENDOR_PREFIXES: [_; 6]` are fixed-size sibling arrays. `idx` is in `0..6` from the match on `vendor` (all 6 class-prefix variants are listed explicitly); `i` from `enumerate()` over VENDOR_PREFIXES is in `0..6`. Both within bounds. PromonShield and ChromiumCrazyLinker intentionally absent (no class prefix)."
 )]
-pub fn extract(dex: &DexFile) -> DexObfuscationFeatures {
+pub fn extract_with_package(dex: &DexFile, main_package: Option<&str>) -> DexObfuscationFeatures {
     // Shadow-filter the class set: duplicate-class_idx rows would
     // inflate `class_count` (the obfuscation-ratio denominator) and
     // double-count their descriptor in `class_names`, deflating the
@@ -252,6 +280,21 @@ pub fn extract(dex: &DexFile) -> DexObfuscationFeatures {
         (KnownVendor::AppSealing, "Lcom/iankw"),
     ];
 
+    // Main-package isolation (Wermke). The manifest `package` is
+    // reverse-DNS (`com.x.y`); DEX descriptors are `Lcom/x/y/Foo;`, so
+    // the main-package prefix is `L<pkg-with-slashes>/`. The trailing
+    // `/` prevents `com.x.y` from matching a sibling `com.x.yextra`.
+    // Caveat: a built APK's manifest `package` == the final
+    // applicationId, which can differ from the code namespace when a
+    // distinct gradle applicationId is set; main-package matching then
+    // under-counts. The all-packages stratum is the unconditional
+    // baseline regardless. Empty/whitespace package ⇒ no stratum.
+    let main_pkg_prefix: Option<String> = main_package
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(|p| format!("L{}/", p.replace('.', "/")));
+    let mut main_package_class_count_acc: usize = 0;
+
     for (i, name) in class_names.iter().enumerate() {
         let clean = name.trim_start_matches('L').trim_end_matches(';');
         total_class_len = total_class_len.saturating_add(clean.len());
@@ -276,13 +319,23 @@ pub fn extract(dex: &DexFile) -> DexObfuscationFeatures {
         }
         let segments: Vec<&str> = clean.split('/').collect();
         let last = segments.last().copied().unwrap_or("");
-        if last.len() <= 2
+        let is_short_name = last.len() <= 2
             && !last.is_empty()
             && last.chars().all(|c| c.is_ascii_lowercase())
-            && segments.len() <= 2
-        {
+            && segments.len() <= 2;
+        if is_short_name {
             obfuscated_class_count = obfuscated_class_count.saturating_add(1);
             short_names_with_index.push((i, clean.to_string()));
+        }
+        // Main-package stratum: structural count of classes that
+        // retained the declared-package namespace. NOT an obfuscation
+        // count — under default R8 the obfuscated app classes flatten
+        // to root and leave this prefix (see field doc).
+        if let Some(prefix) = main_pkg_prefix.as_deref() {
+            if name.starts_with(prefix) {
+                main_package_class_count_acc =
+                    main_package_class_count_acc.saturating_add(1);
+            }
         }
     }
 
@@ -400,7 +453,15 @@ pub fn extract(dex: &DexFile) -> DexObfuscationFeatures {
         high_entropy_string_pct,
         string_pool_entropy_bimodality,
         dex_header_anomalies,
+        main_package_class_count: main_pkg_prefix.as_ref().map(|_| main_package_class_count_acc),
     }
+}
+
+/// Extract obfuscation features without main-package isolation —
+/// equivalent to [`extract_with_package`] with `main_package = None`
+/// (the main-package strata on the result are `None`).
+pub fn extract(dex: &DexFile) -> DexObfuscationFeatures {
+    extract_with_package(dex, None)
 }
 
 /// Compute Kendall tau on the short-name set; mirrors the existing
@@ -502,6 +563,7 @@ fn bimodality_coefficient(xs: &[f32]) -> f32 {
 mod tests {
     use super::*;
     use crate::parser::DexFile;
+    use proptest::prelude::*;
 
     /// Parse the fixture DEX bundled with droidsaw-dex tests so we
     /// exercise `extract` against a real (if minimal) DEX without
@@ -834,5 +896,105 @@ mod tests {
             "FP: com/inkwell/plugin should not match AppSealing, got {:?}",
             f.runtime_prefix_hits
         );
+    }
+
+    // ── main-package isolation (structural retention count) ───────────
+
+    /// Build a `DexFile` whose `class_defs` are exactly the given
+    /// descriptors (each a distinct, non-shadowed class), reusing the
+    /// fixture for all other DEX structure. Lets the strata tests
+    /// control the descriptor set precisely.
+    fn dex_with_class_descriptors(descriptors: &[&str]) -> DexFile {
+        let mut dex = fixture_dex();
+        let template = dex.class_defs[0].clone();
+        dex.class_defs.clear();
+        for d in descriptors {
+            let idx = dex.type_descriptors.len();
+            dex.type_descriptors.push((*d).to_string());
+            let mut cd = template.clone();
+            cd.class_idx = crate::ids::TypeIdx(idx as u32);
+            dex.class_defs.push(cd);
+        }
+        dex
+    }
+
+    #[test]
+    fn main_package_count_is_none_without_a_package() {
+        // Option contract: `None` ⇒ no stratum, and empty / whitespace
+        // package is treated as "no package supplied".
+        let dex = fixture_dex();
+        assert_eq!(extract(&dex).main_package_class_count, None);
+        assert_eq!(extract_with_package(&dex, None).main_package_class_count, None);
+        assert_eq!(extract_with_package(&dex, Some("")).main_package_class_count, None);
+        assert_eq!(extract_with_package(&dex, Some("   ")).main_package_class_count, None);
+    }
+
+    #[test]
+    fn main_package_count_is_some_with_a_nonempty_package() {
+        let dex = fixture_dex();
+        assert!(extract_with_package(&dex, Some("com.example.app"))
+            .main_package_class_count
+            .is_some());
+    }
+
+    #[test]
+    fn main_package_count_reaches_class_count_when_all_under_prefix() {
+        // Upper bound realized: every class retained the namespace (incl.
+        // a sub-package, which is still the app's own code).
+        let dex = dex_with_class_descriptors(&[
+            "Lcom/test/app/Alpha;",
+            "Lcom/test/app/Beta;",
+            "Lcom/test/app/sub/Gamma;",
+        ]);
+        let f = extract_with_package(&dex, Some("com.test.app"));
+        assert_eq!(f.class_count, 3);
+        assert_eq!(f.main_package_class_count, Some(3));
+    }
+
+    #[test]
+    fn main_package_count_is_zero_when_none_under_prefix() {
+        // Lower bound realized: the count is 0 when no class is under
+        // the prefix (guards against a silently-constant implementation).
+        let dex = dex_with_class_descriptors(&["Lother/lib/A;", "Lthird/party/B;"]);
+        let f = extract_with_package(&dex, Some("com.test.app"));
+        assert_eq!(f.class_count, 2);
+        assert_eq!(f.main_package_class_count, Some(0));
+    }
+
+    #[test]
+    fn main_package_prefix_does_not_match_sibling_package() {
+        // Trailing-`/` guard: app "com.x.y" must not absorb "com.x.yextra".
+        let dex = dex_with_class_descriptors(&["Lcom/x/y/Real;", "Lcom/x/yextra/Sibling;"]);
+        let f = extract_with_package(&dex, Some("com.x.y"));
+        assert_eq!(f.main_package_class_count, Some(1));
+    }
+
+    proptest! {
+        /// Oracle + bound: the stratum count equals the number of class
+        /// descriptors under the app prefix, and never exceeds
+        /// `class_count`. Mixed generation exercises both bounds.
+        #[test]
+        fn main_package_count_equals_prefix_match_count(
+            under in proptest::collection::vec(any::<bool>(), 0..16usize),
+        ) {
+            let descriptors: Vec<String> = under
+                .iter()
+                .enumerate()
+                .map(|(i, &u)| {
+                    if u {
+                        format!("Lcom/test/app/C{i};")
+                    } else {
+                        format!("Lother/lib/C{i};")
+                    }
+                })
+                .collect();
+            let refs: Vec<&str> = descriptors.iter().map(String::as_str).collect();
+            let dex = dex_with_class_descriptors(&refs);
+            let f = extract_with_package(&dex, Some("com.test.app"));
+            let expected = under.iter().filter(|&&u| u).count();
+            prop_assert_eq!(f.main_package_class_count, Some(expected));
+            prop_assert_eq!(f.class_count, descriptors.len());
+            prop_assert!(f.main_package_class_count.unwrap_or(usize::MAX) <= f.class_count);
+        }
     }
 }
