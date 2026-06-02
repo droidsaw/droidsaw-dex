@@ -558,6 +558,24 @@ struct ApkSweep {
     /// `helper_counts` so per-bucket ratios are computable.
     helper_counts_attested: HashMap<String, usize>,
     off_family_marker_count: usize,
+    /// Count of this APK's markers whose helper class classifies as
+    /// [`SyntheticKind::EnumUnboxing`]. Enum unboxing is NOT an
+    /// outline-emitting kind, but it IS a non-Unknown classify, so it
+    /// is included in the `namespace_rollup_attested` tally (which
+    /// gates on non-Unknown). Recording it separately lets analysis
+    /// subtract it from `namespace_rollup_attested` to recover genuine
+    /// outline-attestation. Emitted as the `enum_unboxing_attested`
+    /// column.
+    enum_unboxing_attested: usize,
+    /// Distinct-caller-count bands for this APK's fired markers,
+    /// indexed [c1, c2to4, c5to19, c20plus]. Each fired marker's
+    /// `callers` field (the distinct caller count the recogniser
+    /// reported) increments exactly one band, so the four bands sum to
+    /// `marker_count`. Emitted as the `caller_count_bands` column in
+    /// fixed positional order. Makes the single-caller (distinct == 1)
+    /// fraction observable corpus-wide — the precision-cost question
+    /// for the 0x1401 admission.
+    caller_count_bands: [usize; 4],
 }
 
 #[test]
@@ -693,9 +711,11 @@ fn sweep_main() {
                     sweep.marker_count = sweep.marker_count.saturating_add(1);
                     let slot = sweep.helper_counts.entry(marker.helper_class.to_string()).or_insert(0);
                     *slot = slot.saturating_add(1);
+                    let kind = classify_synthetic_kind(&key_class);
                     // Structural attestation: if the obfuscated name
                     // still carries an R8-emitted substring pattern
                     // (`$EnumUnboxingLocalUtility`,
+                    // `$EnumUnboxingSharedUtility`,
                     // `GeneratedOutlineSupport`, or
                     // `$$ExternalSynthetic<kind>`), record it in the
                     // attested set. In mapping-less sweeps most markers
@@ -703,14 +723,33 @@ fn sweep_main() {
                     // pattern under minification); the attestation
                     // rate per family bucket measures the masquerade
                     // window — see `KNOWN_FP_FAMILY` threat-model
-                    // docstring.
-                    if classify_synthetic_kind(&key_class) != SyntheticKind::Unknown {
+                    // docstring. Gate UNCHANGED (any non-Unknown
+                    // classify) so this column stays backward-
+                    // comparable with prior cohorts.
+                    if kind != SyntheticKind::Unknown {
                         let att = sweep
                             .helper_counts_attested
                             .entry(marker.helper_class.to_string())
                             .or_insert(0);
                         *att = att.saturating_add(1);
                     }
+                    // De-conflate EnumUnboxing from outline-attestation.
+                    // EnumUnboxing is non-Unknown (so it is counted in
+                    // namespace_rollup_attested above) but is NOT an
+                    // outline kind. Tally it separately so analysis can
+                    // subtract it to recover genuine outline-attestation.
+                    if kind == SyntheticKind::EnumUnboxing {
+                        sweep.enum_unboxing_attested =
+                            sweep.enum_unboxing_attested.saturating_add(1);
+                    }
+                    // Distinct-caller-count band for this fired marker.
+                    // The `callers` field is the distinct caller count
+                    // the recogniser reported. Fixed positional order
+                    // [c1, c2to4, c5to19, c20plus]; bands sum to
+                    // marker_count.
+                    let band = caller_count_band_index(marker.callers);
+                    sweep.caller_count_bands[band] =
+                        sweep.caller_count_bands[band].saturating_add(1);
                     if !is_in_known_fp_family(&key_class) {
                         sweep.off_family_marker_count =
                             sweep.off_family_marker_count.saturating_add(1);
@@ -784,6 +823,7 @@ fn sweep_main() {
         ));
         let ns_str = ns_pairs.join(",");
         let ns_str_attested = ns_pairs_attested.join(",");
+        let caller_bands_str = format_caller_count_bands(&sweep.caller_count_bands);
 
         append_manifest_row(
             &manifest_path,
@@ -801,6 +841,8 @@ fn sweep_main() {
                 top10_helpers: &top10_str,
                 namespace_rollup: &ns_str,
                 namespace_rollup_attested: &ns_str_attested,
+                enum_unboxing_attested: sweep.enum_unboxing_attested,
+                caller_count_bands: &caller_bands_str,
             },
         );
 
@@ -881,6 +923,31 @@ fn sweep_main() {
     }
 }
 
+/// Map a distinct-caller count to its band index in the fixed
+/// positional order [c1, c2to4, c5to19, c20plus]. The bands mirror
+/// the recogniser's confidence ladder: a single distinct caller is
+/// the precision-sensitive case (the 0x1401 admission), 2..=4 and
+/// 5..=19 are intermediate, and >=20 is the high-confidence floor.
+fn caller_count_band_index(callers: u64) -> usize {
+    match callers {
+        0..=1 => 0,
+        2..=4 => 1,
+        5..=19 => 2,
+        _ => 3,
+    }
+}
+
+/// Format the four caller-count bands into the fixed positional
+/// `c1=<n>,c2to4=<n>,c5to19=<n>,c20plus=<n>` string. Order is fixed
+/// so the column is positionally stable across rows; the four counts
+/// sum to the APK's marker_count.
+fn format_caller_count_bands(bands: &[usize; 4]) -> String {
+    format!(
+        "c1={},c2to4={},c5to19={},c20plus={}",
+        bands[0], bands[1], bands[2], bands[3],
+    )
+}
+
 struct ManifestRowOut<'a> {
     package: &'a str,
     apk_sha256: &'a str,
@@ -895,6 +962,8 @@ struct ManifestRowOut<'a> {
     top10_helpers: &'a str,
     namespace_rollup: &'a str,
     namespace_rollup_attested: &'a str,
+    enum_unboxing_attested: usize,
+    caller_count_bands: &'a str,
 }
 
 fn write_manifest_header_if_new(manifest_path: &Path) {
@@ -913,12 +982,26 @@ fn write_manifest_header_if_new(manifest_path: &Path) {
         # order, same zero-explicit discipline) but restricts to markers\n\
         # whose helper class name carries an R8-emitted structural\n\
         # substring pattern ($EnumUnboxingLocalUtility,\n\
-        # GeneratedOutlineSupport, or $$ExternalSynthetic<kind>). The\n\
-        # ratio attested[bucket] / total[bucket] measures the\n\
-        # attestation rate per bucket — low rates signal a wide\n\
-        # masquerade window in mapping-less analysis. See\n\
-        # KNOWN_FP_FAMILY docstring for threat model.\n\
-        package\tapk_sha256\tdroidsaw_sha\ttimestamp_utc\tdex_count\tdex_sha256_list\tclass_count\tdecompile_fail_count\tmarker_count\tdistinct_helper_count\ttop10_helpers\tnamespace_rollup\tnamespace_rollup_attested\n";
+        # $EnumUnboxingSharedUtility, GeneratedOutlineSupport, or\n\
+        # $$ExternalSynthetic<kind>). The ratio\n\
+        # attested[bucket] / total[bucket] measures the attestation rate\n\
+        # per bucket — low rates signal a wide masquerade window in\n\
+        # mapping-less analysis. See KNOWN_FP_FAMILY docstring for threat\n\
+        # model.\n\
+        # enum_unboxing_attested (column 14) is the count of this APK's\n\
+        # markers classified as SyntheticKind::EnumUnboxing. EnumUnboxing\n\
+        # is a non-Unknown classify (so it IS counted in\n\
+        # namespace_rollup_attested) but is NOT an outline kind; subtract\n\
+        # it from the attested rollup to recover genuine\n\
+        # outline-attestation.\n\
+        # caller_count_bands (column 15) aggregates each fired marker's\n\
+        # distinct-caller count into a fixed positional order:\n\
+        # c1=<n>,c2to4=<n>,c5to19=<n>,c20plus=<n> (callers 0..=1, 2..=4,\n\
+        # 5..=19, >=20). The four counts sum to marker_count; the\n\
+        # c1 (distinct==1) fraction is the precision-cost signal.\n\
+        # Columns 14-15 are schema-additive: pre-existing 13-column rows\n\
+        # remain parseable, and analysis tools tolerate their absence.\n\
+        package\tapk_sha256\tdroidsaw_sha\ttimestamp_utc\tdex_count\tdex_sha256_list\tclass_count\tdecompile_fail_count\tmarker_count\tdistinct_helper_count\ttop10_helpers\tnamespace_rollup\tnamespace_rollup_attested\tenum_unboxing_attested\tcaller_count_bands\n";
     if let Err(e) = std::fs::write(manifest_path, header) {
         panic!("failed to write manifest header to {}: {e}", manifest_path.display());
     }
@@ -940,7 +1023,7 @@ fn append_manifest_row(manifest_path: &Path, row: ManifestRowOut<'_>) {
         );
     }
     let line = format!(
-        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
         row.package,
         row.apk_sha256,
         row.droidsaw_sha,
@@ -954,6 +1037,8 @@ fn append_manifest_row(manifest_path: &Path, row: ManifestRowOut<'_>) {
         row.top10_helpers,
         row.namespace_rollup,
         row.namespace_rollup_attested,
+        row.enum_unboxing_attested,
+        row.caller_count_bands,
     );
     if let Err(e) = f.write_all(line.as_bytes()) {
         panic!(
@@ -970,6 +1055,56 @@ mod tests {
     #[test]
     fn iso8601_basic() {
         assert_eq!(format_iso8601_utc(0), "1970-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn caller_count_band_boundaries() {
+        // Fixed positional bands [c1, c2to4, c5to19, c20plus].
+        // Boundary values pin the cutpoints.
+        assert_eq!(caller_count_band_index(0), 0);
+        assert_eq!(caller_count_band_index(1), 0);
+        assert_eq!(caller_count_band_index(2), 1);
+        assert_eq!(caller_count_band_index(4), 1);
+        assert_eq!(caller_count_band_index(5), 2);
+        assert_eq!(caller_count_band_index(19), 2);
+        assert_eq!(caller_count_band_index(20), 3);
+        assert_eq!(caller_count_band_index(u64::MAX), 3);
+    }
+
+    #[test]
+    fn caller_count_bands_format_fixed_order() {
+        // Fixed positional order, distinct values per slot to catch a
+        // transposition.
+        assert_eq!(
+            format_caller_count_bands(&[7, 11, 13, 17]),
+            "c1=7,c2to4=11,c5to19=13,c20plus=17",
+        );
+        assert_eq!(
+            format_caller_count_bands(&[0, 0, 0, 0]),
+            "c1=0,c2to4=0,c5to19=0,c20plus=0",
+        );
+    }
+
+    #[test]
+    fn manifest_header_has_fifteen_columns() {
+        // Schema-additive guard: the header's tab-separated column
+        // line must carry exactly 15 columns, ending in the two new
+        // additive columns in fixed order. If a column is added,
+        // reordered, or dropped without updating the format string +
+        // struct, this fails.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let manifest = dir.path().join("manifest.tsv");
+        write_manifest_header_if_new(&manifest);
+        let body = std::fs::read_to_string(&manifest).expect("read header");
+        let col_line = body
+            .lines()
+            .find(|l| !l.starts_with('#'))
+            .expect("column header line present");
+        let cols: Vec<&str> = col_line.split('\t').collect();
+        assert_eq!(cols.len(), 15, "expected 15 columns, got {}: {cols:?}", cols.len());
+        assert_eq!(cols[12], "namespace_rollup_attested");
+        assert_eq!(cols[13], "enum_unboxing_attested");
+        assert_eq!(cols[14], "caller_count_bands");
     }
 
     #[test]

@@ -105,15 +105,25 @@ const EXTERNAL_SYNTHETIC_INFIX: &str = "$$ExternalSynthetic";
 /// versions still surface this name on the LHS.
 const LEGACY_GENERATED_OUTLINE_SUPPORT: &str = "GeneratedOutlineSupport";
 
-/// R8 `ENUM_UNBOXING_HELPER` synthetic-class infix. R8's enum-
+/// R8 `ENUM_UNBOXING_HELPER` synthetic-class suffixes. R8's enum-
 /// unboxing transformation (per `synthesis/SyntheticNaming.java`,
-/// kind `ENUM_UNBOXING_HELPER`) emits a per-host utility class
-/// whose LHS class name is `<HostEnumType>$EnumUnboxingLocalUtility`
-/// — e.g. `androidx.work.NetworkType$EnumUnboxingLocalUtility`.
-/// The `$` here is the bare inner-class separator (not the `$$`
-/// verbose-synthetic infix), so this matcher fires under both
-/// minimal and verbose synthetic naming modes.
+/// kind `ENUM_UNBOXING_HELPER`) emits utility classes whose LHS
+/// class name ends in one of two host-anchored shapes:
+///
+/// - `<HostEnumType>$EnumUnboxingLocalUtility` — per-host local
+///   dispatch helper, e.g. `androidx.work.NetworkType$EnumUnboxingLocalUtility`.
+/// - `<HostEnumType>$EnumUnboxingSharedUtility` — shared dispatch
+///   helper emitted when R8 merges enum-unboxing dispatch across
+///   hosts, e.g. `androidx.work.NetworkType$EnumUnboxingSharedUtility`.
+///
+/// R8 emits BOTH shapes; classifying only the Local form leaves the
+/// Shared form bucketed as `Unknown`, which inflates the unattested
+/// count with R8-signal-bearing classes. The `$` in each is the bare
+/// inner-class separator (not the `$$` verbose-synthetic infix), so
+/// these matchers fire under both minimal and verbose synthetic
+/// naming modes.
 const ENUM_UNBOXING_LOCAL_UTILITY_SUFFIX: &str = "$EnumUnboxingLocalUtility";
+const ENUM_UNBOXING_SHARED_UTILITY_SUFFIX: &str = "$EnumUnboxingSharedUtility";
 
 /// SyntheticKind discriminator parsed from the original (LHS)
 /// class name of a mapping.txt record. Verified against R8 source
@@ -148,11 +158,14 @@ pub enum SyntheticKind {
     /// Pre-modern R8 outline emit shape (`GeneratedOutlineSupport`).
     LegacyGeneratedOutlineSupport,
     /// R8's `ENUM_UNBOXING_HELPER` synthetic kind (per
-    /// `synthesis/SyntheticNaming.java`). Anchored on the
-    /// `$EnumUnboxingLocalUtility` suffix on the last segment of
-    /// the LHS class name; the host segment is the original boxed
-    /// enum type being unboxed (e.g. `androidx.work.NetworkType`
-    /// in `androidx.work.NetworkType$EnumUnboxingLocalUtility`).
+    /// `synthesis/SyntheticNaming.java`). Anchored on either the
+    /// `$EnumUnboxingLocalUtility` or `$EnumUnboxingSharedUtility`
+    /// suffix on the last segment of the LHS class name; the host
+    /// segment is the original boxed enum type being unboxed (e.g.
+    /// `androidx.work.NetworkType` in
+    /// `androidx.work.NetworkType$EnumUnboxingLocalUtility`). R8
+    /// emits the Local form per-host and the Shared form when it
+    /// merges dispatch across hosts; both classify here.
     ///
     /// **This is NOT an outline-emitting kind.** Enum unboxing is a
     /// separate R8 transformation that converts boxed enum constants
@@ -229,6 +242,30 @@ impl SyntheticKind {
             SyntheticKind::Unknown,
         ]
     }
+
+    /// True for the kinds that host R8-outlined methods. This is the
+    /// eight-kind outline axis: the seven verbose outline-emitting
+    /// kinds plus the legacy `GeneratedOutlineSupport` host, plus the
+    /// joint-signal `OutlineKindUnknown` (verified-outlined, kind
+    /// ambiguous). `EnumUnboxing` is explicitly NOT an outline kind —
+    /// enum unboxing is a separate R8 transformation whose utility
+    /// class hosts dispatch helpers, not outlined method bodies. The
+    /// no-signal `Unknown` is not an outline kind either. Used to
+    /// separate genuine outline-attestation from the broader
+    /// "any non-Unknown classify" tally.
+    pub fn is_outline_kind(self) -> bool {
+        match self {
+            SyntheticKind::Outline
+            | SyntheticKind::CovariantOutline
+            | SyntheticKind::ApiModelOutline
+            | SyntheticKind::NonStartupInStartupOutline
+            | SyntheticKind::BottomUpOutline
+            | SyntheticKind::ObjectCloneOutline
+            | SyntheticKind::LegacyGeneratedOutlineSupport
+            | SyntheticKind::OutlineKindUnknown => true,
+            SyntheticKind::EnumUnboxing | SyntheticKind::Unknown => false,
+        }
+    }
 }
 
 /// Classify a class name into a SyntheticKind by examining its
@@ -236,7 +273,8 @@ impl SyntheticKind {
 /// that don't carry a recognised infix/suffix — most developer
 /// classes fall here. The function does not assume input validation;
 /// callers MAY pass any string. Legacy `GeneratedOutlineSupport` and
-/// `EnumUnboxingLocalUtility` are checked first because both predate
+/// the enum-unboxing utility suffixes (`EnumUnboxingLocalUtility` /
+/// `EnumUnboxingSharedUtility`) are checked first because all predate
 /// or sit outside the `$$ExternalSynthetic` infix shape.
 ///
 /// The legacy check anchors on the trailing dot-separated segment
@@ -268,7 +306,9 @@ pub fn classify_synthetic_kind(original_class_name: &str) -> SyntheticKind {
         .rsplit('.')
         .next()
         .unwrap_or(original_class_name);
-    if last_segment.ends_with(ENUM_UNBOXING_LOCAL_UTILITY_SUFFIX) {
+    if last_segment.ends_with(ENUM_UNBOXING_LOCAL_UTILITY_SUFFIX)
+        || last_segment.ends_with(ENUM_UNBOXING_SHARED_UTILITY_SUFFIX)
+    {
         return SyntheticKind::EnumUnboxing;
     }
     if let Some(suffix) = last_segment.strip_prefix(LEGACY_GENERATED_OUTLINE_SUPPORT) {
@@ -1327,9 +1367,11 @@ b.B$$ExternalSyntheticBUOutline$0 -> b0:
     #[test]
     fn synthetic_kind_classifier_recognises_enum_unboxing() {
         // R8's ENUM_UNBOXING_HELPER emit shape: the original boxed
-        // enum host class with the `$EnumUnboxingLocalUtility`
-        // suffix. Both the AndroidX example surfaced by the F-Droid
-        // sweep and a generic developer-package shape classify.
+        // enum host class with the `$EnumUnboxingLocalUtility` or
+        // `$EnumUnboxingSharedUtility` suffix. Both the AndroidX
+        // example surfaced by the F-Droid sweep and a generic
+        // developer-package shape classify, for BOTH the Local and
+        // the Shared utility forms.
         assert_eq!(
             classify_synthetic_kind("androidx.work.NetworkType$EnumUnboxingLocalUtility"),
             SyntheticKind::EnumUnboxing,
@@ -1338,6 +1380,53 @@ b.B$$ExternalSyntheticBUOutline$0 -> b0:
             classify_synthetic_kind("com.foo.MyEnum$EnumUnboxingLocalUtility"),
             SyntheticKind::EnumUnboxing,
         );
+        // Shared-utility form: R8 emits this when it merges enum-
+        // unboxing dispatch across hosts. Without this arm it falls
+        // through to Unknown, inflating the unattested count.
+        assert_eq!(
+            classify_synthetic_kind("androidx.work.NetworkType$EnumUnboxingSharedUtility"),
+            SyntheticKind::EnumUnboxing,
+        );
+        assert_eq!(
+            classify_synthetic_kind("com.foo.MyEnum$EnumUnboxingSharedUtility"),
+            SyntheticKind::EnumUnboxing,
+        );
+    }
+
+    #[test]
+    fn synthetic_kind_classifier_enum_unboxing_shared_anchored_on_trailing_segment() {
+        // The Shared suffix is anchored the same way as the Local
+        // suffix: a developer class that merely embeds the substring
+        // without the trailing-segment `$`-boundary match must NOT
+        // bucket as EnumUnboxing.
+        assert_eq!(
+            classify_synthetic_kind("com.foo.MyEnumUnboxingSharedUtilityWrapper"),
+            SyntheticKind::Unknown,
+        );
+        assert_eq!(
+            classify_synthetic_kind("com.foo.X$EnumUnboxingSharedUtilityHelper"),
+            SyntheticKind::Unknown,
+        );
+    }
+
+    #[test]
+    fn is_outline_kind_excludes_enum_unboxing_and_unknown() {
+        // The eight outline-hosting kinds report true; EnumUnboxing
+        // (a separate transformation) and Unknown (no signal) report
+        // false. This is the axis the sweep uses to subtract
+        // enum-unboxing from the attested rollup.
+        for &k in SyntheticKind::report_order() {
+            let expected = !matches!(k, SyntheticKind::EnumUnboxing | SyntheticKind::Unknown);
+            assert_eq!(
+                k.is_outline_kind(),
+                expected,
+                "is_outline_kind mismatch for {k:?}",
+            );
+        }
+        assert!(!SyntheticKind::EnumUnboxing.is_outline_kind());
+        assert!(!SyntheticKind::Unknown.is_outline_kind());
+        assert!(SyntheticKind::Outline.is_outline_kind());
+        assert!(SyntheticKind::OutlineKindUnknown.is_outline_kind());
     }
 
     #[test]
