@@ -1084,6 +1084,25 @@ fn recognise_outline_helper_v2(
     if insn_count == 0 || insn_count > 100 {
         return None;
     }
+    // A body that is a single bare Return-family opcode extracted no
+    // bytecode: this is an R8 horizontal-class-merge empty bridge (a
+    // synthetic static stub), not an extracted outline body. The
+    // outliner exists to hoist repeated non-trivial bytecode, so a
+    // sole-return shape is structurally impossible as an outline.
+    // Reject regardless of caller count / kind.
+    if insn_count == 1
+        && code.instructions.first().is_some_and(|i| {
+            matches!(
+                i.op,
+                Opcode::ReturnVoid
+                    | Opcode::Return
+                    | Opcode::ReturnWide
+                    | Opcode::ReturnObject
+            )
+        })
+    {
+        return None;
+    }
     // I6: every opcode must be outline-eligible. BUOutline bodies
     // legitimately terminate in `Throw` (the whole point of the BU
     // outliner is to extract exception-construction-and-throw
@@ -3105,5 +3124,198 @@ mod tests {
         let resolved = super::resolve_outline_class_def_canonical(&dex, 0xABCD)
             .expect("single matching row");
         assert_eq!(resolved.class_idx, TypeIdx(1));
+    }
+
+    // ── Single-bare-return horizontal-merge-bridge suppression ──────
+    //
+    // R8's horizontal class merger emits synthetic static stubs whose
+    // entire body is one bare Return-family opcode (e.g. the empty
+    // `public static return-void` bridges packed into a
+    // `0x1401 = ACC_PUBLIC|ACC_ABSTRACT|ACC_SYNTHETIC` class). These
+    // satisfy every structural outline predicate AND the
+    // abstract-synthetic caller-ladder relaxation, so without a floor
+    // they fire as StructurallyOutlineLike at confidence 40 with two
+    // distinct callers. A bare return extracts no bytecode, so it is
+    // structurally impossible to be an extracted outline; the floor
+    // rejects it. The positive-control twin proves the floor is
+    // recall-neutral: a multi-instruction body in the same class /
+    // caller configuration still fires.
+
+    /// Build a `0x1401` (ACC_PUBLIC|ACC_ABSTRACT|ACC_SYNTHETIC) class
+    /// with a single `public static` helper method whose body is the
+    /// supplied instruction sequence, wired with two distinct
+    /// invoke-static callers. Returns the `DexFile`, the helper's
+    /// `MethodIdx`, and a census whose `method_class_data_off` /
+    /// `method_code_off` / `invoke_static_callers` resolve for the
+    /// recogniser. The helper takes one parameter (arity 1, in range,
+    /// non-zero so the non-BU arity gate admits it).
+    fn abstract_synthetic_helper_dex(
+        body: Vec<crate::decode::Instruction>,
+    ) -> (crate::parser::DexFile, MethodIdx, TrampolineCensus) {
+        let mut dex = make_minimal_dexfile();
+
+        // Strings: class descriptor, method name, one shorty, the
+        // param + return type descriptors.
+        dex.strings = vec![
+            s("Lh/synth;"),  // 0: synthetic merge-bridge class
+            s("m"),          // 1: helper method name
+            s("LI"),         // 2: shorty (unused by recogniser)
+            s("I"),          // 3: param/return type descriptor
+        ];
+        dex.type_descriptors = vec![
+            String::from("Lh/synth;"), // TypeIdx(0): the helper's class
+            String::from("I"),         // TypeIdx(1): param/return type
+        ];
+
+        // One type-list holding a single param type, keyed at a
+        // non-zero offset so `proto.parameters_off != 0` resolves to
+        // param_count == 1.
+        let params_off = 0x4000u32;
+        dex.type_lists.insert(params_off, vec![TypeIdx(1)]);
+
+        // Proto: (I)I — one param, arity 1.
+        dex.protos = vec![ProtoIdItem {
+            shorty_idx: StringIdx(2),
+            return_type_idx: TypeIdx(1),
+            parameters_off: params_off,
+        }];
+
+        // One method: Lh/synth;->m(I)I
+        dex.methods = vec![MethodIdItem {
+            class_idx: TypeIdx(0),
+            proto_idx: ProtoIdx(0),
+            name_idx: StringIdx(1),
+        }];
+
+        // Class def: 0x1401 = ACC_PUBLIC|ACC_ABSTRACT|ACC_SYNTHETIC.
+        let class_data_off = 0x5000u32;
+        dex.class_defs = vec![ClassDefItem {
+            class_idx: TypeIdx(0),
+            access_flags: 0x1401,
+            superclass_idx: Some(TypeIdx(0)),
+            interfaces_off: 0,
+            source_file_idx: None,
+            annotations_off: 0,
+            class_data_off,
+            static_values_off: 0,
+        }];
+
+        // class_data: the single static helper, no fields, no virtual
+        // methods.
+        let code_off = 0x6000u32;
+        dex.class_datas.insert(
+            class_data_off,
+            crate::decode::ClassData {
+                static_fields: Vec::new(),
+                instance_fields: Vec::new(),
+                direct_methods: vec![crate::decode::EncodedMethod {
+                    method_idx: MethodIdx(0),
+                    access_flags: 0x0009, // ACC_PUBLIC | ACC_STATIC
+                    code_off,
+                }],
+                virtual_methods: Vec::new(),
+            },
+        );
+        dex.code_items.insert(code_off, code_item_of(body));
+
+        // Census: back-pointers + two distinct callers so the
+        // abstract-synthetic ladder admits at confidence 40.
+        let mut census = TrampolineCensus::default();
+        census.method_class_data_off.insert(MethodIdx(0), class_data_off);
+        census.method_code_off.insert(MethodIdx(0), code_off);
+        census
+            .invoke_static_callers
+            .insert(MethodIdx(0), vec![MethodIdx(10), MethodIdx(11)]);
+
+        (dex, MethodIdx(0), census)
+    }
+
+    #[test]
+    fn outline_helper_v2_rejects_single_bare_return_void_bridge() {
+        // FP-suppression: a single `return-void` body in a 0x1401
+        // class with two distinct callers WOULD fire at confidence 40
+        // without the floor. The floor rejects it as a horizontal-
+        // merge empty bridge.
+        let (dex, helper, census) = abstract_synthetic_helper_dex(vec![Instruction {
+            addr: 0,
+            op: Opcode::ReturnVoid,
+            size: 1,
+            dst: None,
+            src: RegList::empty(),
+            literal: 0,
+            target: None,
+            pool_idx: None,
+        }]);
+        assert!(
+            recognise_outline_helper_v2(&dex, helper, &census).is_none(),
+            "single bare return-void in a 0x1401 synthetic class is a horizontal-merge \
+             empty bridge, not an outline — the recogniser must decline"
+        );
+    }
+
+    #[test]
+    fn outline_helper_v2_rejects_each_single_bare_return_family_opcode() {
+        // The floor covers every Return-family opcode, not just
+        // return-void: return / return-wide / return-object bridges
+        // are equally bytecode-free.
+        for op in [Opcode::Return, Opcode::ReturnWide, Opcode::ReturnObject] {
+            let (dex, helper, census) = abstract_synthetic_helper_dex(vec![Instruction {
+                addr: 0,
+                op,
+                size: 1,
+                dst: Some(0),
+                src: RegList::empty(),
+                literal: 0,
+                target: None,
+                pool_idx: None,
+            }]);
+            assert!(
+                recognise_outline_helper_v2(&dex, helper, &census).is_none(),
+                "single bare {op:?} must be rejected as a merge bridge"
+            );
+        }
+    }
+
+    #[test]
+    fn outline_helper_v2_still_fires_on_multi_insn_body() {
+        // Positive control (no recall loss): the SAME 0x1401 class +
+        // two-distinct-caller configuration, but a two-instruction
+        // body (sget-object ; return-object). This is NOT a bare
+        // return — `insn_count == 1` is false — so the floor does not
+        // apply and the recogniser fires at confidence 40, proving the
+        // floor suppresses ONLY the single-bare-return shape.
+        let (dex, helper, census) = abstract_synthetic_helper_dex(vec![
+            Instruction {
+                addr: 0,
+                op: Opcode::SgetObject,
+                size: 2,
+                dst: Some(0),
+                src: RegList::empty(),
+                literal: 0,
+                target: None,
+                pool_idx: None,
+            },
+            Instruction {
+                addr: 2,
+                op: Opcode::ReturnObject,
+                size: 1,
+                dst: Some(0),
+                src: RegList::empty(),
+                literal: 0,
+                target: None,
+                pool_idx: None,
+            },
+        ]);
+        let origin = recognise_outline_helper_v2(&dex, helper, &census)
+            .expect("multi-instruction outline body must still fire");
+        assert!(matches!(
+            origin.variant,
+            R8Transform::StructurallyOutlineLike
+        ));
+        assert_eq!(
+            origin.confidence, 40,
+            "two distinct callers on the abstract-synthetic ladder → confidence 40"
+        );
+        assert_eq!(origin.caller_count, 2);
     }
 }
