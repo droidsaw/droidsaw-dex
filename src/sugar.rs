@@ -50,6 +50,31 @@ use crate::types::TypeEnv;
 /// `DexError::EmitRecursionDepthExceeded` if its own cap is hit.
 pub const MAX_DESUGAR_DEPTH: usize = 256;
 
+/// Iteration cap on `desugar()`'s outer fixpoint loop.
+///
+/// WHY: `desugar()` re-runs `desugar_recursive` until a pass reports no
+/// change. Each legitimate pass strictly simplifies the `Stmt` tree (a
+/// transform fires only when it rewrites a recognized shape into a smaller
+/// one), so real input converges in a few passes regardless of method
+/// size — the transforms apply tree-wide per pass, not one-rewrite-per-pass.
+/// Without a cap, however, input where a transform never reaches a fixpoint
+/// — two transforms oscillating, or a spurious `changed = true` on a no-op —
+/// spins the loop forever (100% CPU). This is reachable on adversarial input:
+/// a parse failure touching a Kotlin class's annotation/class_data subtree
+/// makes its Kotlin detectors return `Indeterminate`, routing the class down
+/// the standard Java decompile path into `desugar` on a shape it cannot
+/// converge on. An uncapped loop there is a decompiler-hang DoS.
+///
+/// Value: 64 — a large margin over observed legitimate convergence (a
+/// handful of passes), so no real method hits the cap, while still bounding
+/// non-convergence to 64 depth-bounded walks.
+///
+/// Semantics on cap: the loop stops and the body is left in its current
+/// best-guess shape — the same "stop transforming, keep what we have"
+/// fallback `MAX_DESUGAR_DEPTH` uses for over-deep subtrees. The IR stays
+/// structurally valid for the downstream `emit_method` walk.
+pub const MAX_DESUGAR_PASSES: usize = 64;
+
 // ── String concatenation ────────────────────────────────────────────
 
 /// Check if an instruction is `new-instance Ljava/lang/StringBuilder;`
@@ -1970,7 +1995,12 @@ pub fn desugar(
     // `extract_const_int_assign`.
     let method_const_int_env = collect_method_const_int_env(stmt);
     let mut changed_any = false;
-    loop {
+    // Bounded fixpoint: re-run until a pass reports no change, but at most
+    // MAX_DESUGAR_PASSES times. The cap guarantees termination even when a
+    // transform never reaches a fixpoint (oscillation, or a spurious
+    // `changed = true`); on hitting it the body is left in its current
+    // best-guess shape. See MAX_DESUGAR_PASSES for the load-bearing rationale.
+    for _ in 0..MAX_DESUGAR_PASSES {
         // The top-level call from `decompile_method` passes the
         // method-root Stmt as `stmt`, so `is_top_level: true` is the
         // correct seed. desugar_recursive's recursive descents into
