@@ -109,7 +109,8 @@ fn decompile_class_impl(
     } else {
         None
     };
-    let is_kt_facade = dex.is_kotlin_facade_candidate(class_def.class_idx).is_yes()
+    let facade_verdict = dex.is_kotlin_facade_candidate(class_def.class_idx);
+    let is_kt_facade = facade_verdict.is_yes()
         && parsed_cd
             .as_ref()
             .map(|cd| {
@@ -129,8 +130,8 @@ fn decompile_class_impl(
     // class_data, primary `<init>` ctor) is verified inside
     // `render_kotlin_data_class_header` — falsy returns from that helper
     // fall through to the standard Java-shape emit.
-    let is_kt_data_class =
-        !is_kt_facade && dex.is_kotlin_data_class(class_def.class_idx).is_yes();
+    let data_class_verdict = dex.is_kotlin_data_class(class_def.class_idx);
+    let is_kt_data_class = !is_kt_facade && data_class_verdict.is_yes();
 
     // Kotlin `sealed class` root gate (PR-9e of #41b). Mutually exclusive
     // with facade and data-class — sealed roots are abstract, carry
@@ -142,9 +143,41 @@ fn decompile_class_impl(
     // `is_kotlin_sealed_class_subclass`, so the iterator's
     // `is_suppressible_kotlin_sealed_subclass` filter must drop those
     // subclasses from top-level emission.
-    let is_kt_sealed_root = !is_kt_facade
-        && !is_kt_data_class
-        && dex.is_kotlin_sealed_root(class_def.class_idx).is_yes();
+    let sealed_root_verdict = dex.is_kotlin_sealed_root(class_def.class_idx);
+    let is_kt_sealed_root =
+        !is_kt_facade && !is_kt_data_class && sealed_root_verdict.is_yes();
+
+    // Indeterminate-banner accumulation. A Kotlin-vs-Java rendering detector
+    // that returns Indeterminate (annotation / class_data parse failure) makes
+    // the emitted shape an unverified best-guess. Collect the detector names so
+    // a single class-level banner warns the operator. Java-surface stays the
+    // best-guess render: is_yes() is already false on Indeterminate, so the
+    // rendering polarity is unchanged and the banner is purely additive. The two
+    // sealed-subclass detectors are consulted here because the suppression
+    // filter keeps an Indeterminate subclass at top level, where this function
+    // renders it.
+    let mut indeterminate_detectors: BTreeSet<&'static str> = BTreeSet::new();
+    if facade_verdict.is_indeterminate() {
+        indeterminate_detectors.insert("is_kotlin_facade_candidate");
+    }
+    if data_class_verdict.is_indeterminate() {
+        indeterminate_detectors.insert("is_kotlin_data_class");
+    }
+    if sealed_root_verdict.is_indeterminate() {
+        indeterminate_detectors.insert("is_kotlin_sealed_root");
+    }
+    if dex
+        .is_kotlin_sealed_object_subclass(class_def.class_idx)
+        .is_indeterminate()
+    {
+        indeterminate_detectors.insert("is_kotlin_sealed_object_subclass");
+    }
+    if dex
+        .is_kotlin_sealed_class_subclass(class_def.class_idx)
+        .is_indeterminate()
+    {
+        indeterminate_detectors.insert("is_kotlin_sealed_class_subclass");
+    }
 
     // Source file comment. Suppressed in facade and data-class mode:
     // kotlinc records the input `.kt` filename in the `SourceFile`
@@ -214,7 +247,7 @@ fn decompile_class_impl(
             block.push('\n');
             out.insert_str(header_anchor, &block);
         }
-        return out;
+        return prepend_indeterminate_banner(out, &indeterminate_detectors);
     }
 
     // Kotlin `sealed class` early-return path. Renders
@@ -235,7 +268,7 @@ fn decompile_class_impl(
             block.push('\n');
             out.insert_str(header_anchor, &block);
         }
-        return out;
+        return prepend_indeterminate_banner(out, &indeterminate_detectors);
     }
 
     // R8 identity-hints comment block. Gated on `LX/<short-id>;` shape;
@@ -582,7 +615,24 @@ fn decompile_class_impl(
         out.insert_str(insert_at, &block);
     }
 
-    out
+    prepend_indeterminate_banner(out, &indeterminate_detectors)
+}
+
+/// Prepend a single Indeterminate-detector banner to a rendered class when one
+/// or more Kotlin-vs-Java rendering detectors returned `Indeterminate`. The body
+/// is still emitted as the best-guess Java-surface shape; the banner tells the
+/// operator the rendered shape may not match the original source rather than
+/// letting a silent best-guess pass as authoritative. One banner per class
+/// (the detector set is deduplicated), or the input unchanged when empty.
+fn prepend_indeterminate_banner(out: String, detectors: &BTreeSet<&'static str>) -> String {
+    if detectors.is_empty() {
+        return out;
+    }
+    let names: Vec<&str> = detectors.iter().copied().collect();
+    format!(
+        "// DROIDSAW_INDETERMINATE: {}; rendered shape may not match original source\n{out}",
+        names.join(", ")
+    )
 }
 
 /// Insert `throws Throwable` before the opening brace of every method
@@ -1822,6 +1872,14 @@ fn render_kotlin_sealed_class_header(
             continue;
         };
         let sub_simple = sealed_subclass_simple_name(class_desc, sub_desc);
+        // No Indeterminate handling needed here: this function is only reached
+        // when `is_kt_sealed_root` is Yes, which requires both the annotation
+        // and class_data global verdict gates to be clean. The subclass
+        // detectors derive Indeterminate solely from those same global gates,
+        // so inside this function they can only return Yes or No. A subclass
+        // whose verdict is Indeterminate under a tainted DEX is caught by the
+        // class-level banner in `decompile_class_impl` when it is emitted
+        // top-level (the suppression filter keeps it top-level on Indeterminate).
         if dex.is_kotlin_sealed_object_subclass(sub_idx).is_yes() {
             let _ = writeln!(out, "    object {sub_simple} : {class_name}()");
         } else if dex.is_kotlin_sealed_class_subclass(sub_idx).is_yes() {
@@ -3630,6 +3688,68 @@ mod tests {
             assert!(
                 header.is_none(),
                 "class {} unexpectedly produced a sealed-class header",
+                dex.get_type_descriptor(cd.class_idx).unwrap_or("?")
+            );
+        }
+    }
+
+    #[test]
+    fn indeterminate_metadata_taint_emits_class_banner() {
+        // A planted annotation-subtree parse failure makes the global
+        // annotation verdict gate dirty, so every Kotlin-vs-Java rendering
+        // detector that gates on @kotlin.Metadata returns Indeterminate for
+        // every class. The decompiled class must then carry exactly one
+        // DROIDSAW_INDETERMINATE banner, as its first line, naming the
+        // metadata-gated detectors. (Per-site isolation is not possible: the
+        // verdict gate is global, so all metadata-gated detectors flip
+        // together — this exercises sites 112/133/147 plus the class-level
+        // sealed-subclass checks collectively.) Also the public-API e2e path.
+        let data = include_bytes!("../tests/fixtures/classes_named.dex");
+        let mut dex = DexFile::parse(data, None).expect("parse");
+        dex.parse_errors.push(crate::parser::ParseFailure {
+            kind: crate::parser::ParseFailureKind::AnnotationItem,
+            offset: 0x1000,
+        });
+        for cd in &dex.class_defs {
+            let src = decompile_class(&dex, data, cd);
+            let first = src.lines().next().unwrap_or("");
+            assert!(
+                first.starts_with("// DROIDSAW_INDETERMINATE:"),
+                "class {} missing Indeterminate banner under planted annotation parse failure; first line: {first:?}",
+                dex.get_type_descriptor(cd.class_idx).unwrap_or("?")
+            );
+            for det in [
+                "is_kotlin_data_class",
+                "is_kotlin_sealed_root",
+                "is_kotlin_sealed_object_subclass",
+                "is_kotlin_sealed_class_subclass",
+            ] {
+                assert!(
+                    first.contains(det),
+                    "banner missing detector {det} for class {}; got: {first:?}",
+                    dex.get_type_descriptor(cd.class_idx).unwrap_or("?")
+                );
+            }
+            assert_eq!(
+                src.matches("// DROIDSAW_INDETERMINATE:").count(),
+                1,
+                "expected exactly one banner per class (dedup)"
+            );
+        }
+    }
+
+    #[test]
+    fn clean_fixture_emits_no_indeterminate_banner() {
+        // Negative gate: with no planted parse failure the detectors return
+        // Yes/No (never Indeterminate), so the additive banner must NOT fire on
+        // clean input — the rendered shape stays authoritative.
+        let data = include_bytes!("../tests/fixtures/classes_named.dex");
+        let dex = DexFile::parse(data, None).expect("parse");
+        for cd in &dex.class_defs {
+            let src = decompile_class(&dex, data, cd);
+            assert!(
+                !src.contains("// DROIDSAW_INDETERMINATE:"),
+                "class {} emitted a spurious Indeterminate banner on a clean DEX",
                 dex.get_type_descriptor(cd.class_idx).unwrap_or("?")
             );
         }
