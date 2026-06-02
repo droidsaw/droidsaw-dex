@@ -46,7 +46,7 @@ use std::collections::BTreeMap;
 
 use crate::cfg;
 use crate::decode::PoolIndex;
-use crate::ids::{ClassDefItem, FieldIdx, MethodIdx, TypeIdx};
+use crate::ids::{FieldIdx, MethodIdx, TypeIdx};
 use crate::opcodes::Opcode;
 use crate::parser::{DexFile, ParseFailureKind};
 use crate::structure::Stmt;
@@ -420,6 +420,15 @@ pub struct TrampolineCensus {
     /// `class_datas` keyed on `class_data_off`; storing the
     /// per-method back-pointer avoids a per-call O(class_defs) scan.
     method_class_data_off: BTreeMap<MethodIdx, u32>,
+    /// `class_data_off → index into `dex.class_defs`` for the canonical
+    /// outline class_def at that offset. The per-method linear
+    /// `class_defs` scan in the outline recogniser is memoized to an
+    /// O(log C) lookup here. The canonical row for a given
+    /// `class_data_off` is the FIRST `ACC_SYNTHETIC` (0x1000) row if one
+    /// exists, else the FIRST row overall — matching
+    /// `resolve_outline_class_def_canonical` exactly (including the
+    /// collision case where rows share a `class_data_off`).
+    canonical_class_def_by_data_off: BTreeMap<u32, usize>,
 }
 
 impl TrampolineCensus {
@@ -478,6 +487,20 @@ impl TrampolineCensus {
             .get(&target)
             .map(Vec::as_slice)
             .unwrap_or(&[])
+    }
+
+    /// Index into `dex.class_defs` of the canonical outline class_def
+    /// for `class_data_off`, or `None` if no class_def at this offset.
+    /// The canonical row is the first `ACC_SYNTHETIC` row at the offset
+    /// if any exists, else the first row overall — identical to
+    /// `resolve_outline_class_def_canonical`. The returned index is into
+    /// the `dex.class_defs` the census was built from; callers resolve
+    /// it with `dex.class_defs.get(idx)`.
+    #[must_use]
+    pub fn canonical_class_def_idx(&self, class_data_off: u32) -> Option<usize> {
+        self.canonical_class_def_by_data_off
+            .get(&class_data_off)
+            .copied()
     }
 }
 
@@ -539,10 +562,38 @@ pub fn build_trampoline_census(dex: &DexFile) -> TrampolineCensus {
             callers.entry(m).or_default().push(owner);
         }
     }
+    // Precompute the canonical outline class_def per `class_data_off` in
+    // ONE O(C) pass. The per-method scan in the outline recogniser would
+    // otherwise re-resolve this linearly per concrete method. The rule
+    // matches `resolve_outline_class_def_canonical`: the canonical for an
+    // offset is the first ACC_SYNTHETIC (0x1000) row if any exists, else
+    // the first row overall. `class_data_off == 0` is included like any
+    // other offset so the map equals the linear resolver for every off.
+    let mut canonical_class_def_by_data_off: BTreeMap<u32, usize> = BTreeMap::new();
+    for (i, cd) in dex.class_defs.iter().enumerate() {
+        let off = cd.class_data_off;
+        let is_syn = (cd.access_flags & 0x1000) != 0;
+        match canonical_class_def_by_data_off.get(&off).copied() {
+            None => {
+                canonical_class_def_by_data_off.insert(off, i);
+            }
+            Some(incumbent) => {
+                let incumbent_is_syn = dex
+                    .class_defs
+                    .get(incumbent)
+                    .is_some_and(|c| (c.access_flags & 0x1000) != 0);
+                if !incumbent_is_syn && is_syn {
+                    // Upgrade to the first ACC_SYNTHETIC row at this off.
+                    canonical_class_def_by_data_off.insert(off, i);
+                }
+            }
+        }
+    }
     TrampolineCensus {
         invoke_static_callers: callers,
         method_code_off,
         method_class_data_off,
+        canonical_class_def_by_data_off,
     }
 }
 
@@ -839,7 +890,17 @@ fn recognise_dead_branch_stripped(
 /// The collision itself surfaces as `DEX_CLASS_DATA_OFF_COLLISION` via
 /// `diag::collect_class_data_off_collision_findings`; this helper just
 /// performs the canonical resolution.
-fn resolve_outline_class_def_canonical(dex: &DexFile, class_data_off: u32) -> Option<&ClassDefItem> {
+///
+/// Production resolves the canonical class_def through the
+/// `TrampolineCensus` memoization (`canonical_class_def_idx`), which is
+/// built in one O(C) pass. This linear resolver is retained `#[cfg(test)]`
+/// as the independent equivalence oracle the census map is verified
+/// against.
+#[cfg(test)]
+fn resolve_outline_class_def_canonical(
+    dex: &DexFile,
+    class_data_off: u32,
+) -> Option<&crate::ids::ClassDefItem> {
     dex.class_defs
         .iter()
         .filter(|cd| cd.class_data_off == class_data_off)
@@ -869,7 +930,12 @@ fn recognise_outline_helper_v2(
     // the difference between catching outline helpers and catching
     // every utility class that looks like one structurally.
     let class_data_off = census.method_class_data_off.get(&current_method).copied()?;
-    let class_def = resolve_outline_class_def_canonical(dex, class_data_off)?;
+    // Canonical (ACC_SYNTHETIC-preferring) resolution memoized in the
+    // census; equivalent to `resolve_outline_class_def_canonical` but
+    // O(log C) instead of a per-method linear `class_defs` scan.
+    let class_def = dex
+        .class_defs
+        .get(census.canonical_class_def_idx(class_data_off)?)?;
     if (class_def.access_flags & 0x1000) == 0 {
         return None;
     }
@@ -3126,6 +3192,188 @@ mod tests {
         assert_eq!(resolved.class_idx, TypeIdx(1));
     }
 
+    /// For `dex`, assert the census canonical-class_def map resolves
+    /// IDENTICALLY to the linear `resolve_outline_class_def_canonical`
+    /// oracle for every distinct `class_data_off` present in
+    /// `dex.class_defs` (plus a known-absent offset → both `None`).
+    /// Identity is compared by `(class_idx, access_flags)` of the
+    /// resolved row, which pins the ACC_SYNTHETIC-preferring choice and
+    /// the first-fallback choice including the collision case.
+    fn assert_census_matches_oracle(dex: &crate::parser::DexFile) {
+        let census = build_trampoline_census(dex);
+        let mut offs: Vec<u32> = dex.class_defs.iter().map(|cd| cd.class_data_off).collect();
+        offs.push(0xDEAD_BEEF); // known-absent: both sides must be None
+        offs.sort_unstable();
+        offs.dedup();
+        for off in offs {
+            let oracle = super::resolve_outline_class_def_canonical(dex, off);
+            let via_census = census
+                .canonical_class_def_idx(off)
+                .and_then(|i| dex.class_defs.get(i));
+            match (oracle, via_census) {
+                (None, None) => {}
+                (Some(o), Some(c)) => {
+                    assert_eq!(
+                        (o.class_idx, o.access_flags),
+                        (c.class_idx, c.access_flags),
+                        "census diverges from linear oracle at class_data_off={off:#x}"
+                    );
+                    assert!(
+                        std::ptr::eq(o, c),
+                        "census must resolve to the SAME class_def row as the oracle \
+                         at class_data_off={off:#x}"
+                    );
+                }
+                (o, c) => panic!(
+                    "census/oracle disagree on presence at class_data_off={off:#x}: \
+                     oracle={:?}, census={:?}",
+                    o.map(|cd| cd.class_idx),
+                    c.map(|cd| cd.class_idx),
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn census_canonical_resolution_equals_linear_oracle_all_scenarios() {
+        // Equivalence safety net: the memoized census map MUST resolve
+        // identically to the linear `resolve_outline_class_def_canonical`
+        // for every class_data_off across the collision scenarios the
+        // oracle's own unit tests build (prefer-synthetic on collision,
+        // first-fallback when no row is synthetic, single unique row),
+        // plus a mixed multi-offset DEX. This pins the security-sensitive
+        // ACC_SYNTHETIC-preferring decision through the new path.
+
+        // Scenario 1: collision, decoy-first then ACC_SYNTHETIC canonical.
+        let mut dex = make_minimal_dexfile();
+        dex.class_defs = vec![
+            class_def_with(TypeIdx(2), 0x0001, 0xABCD), // decoy, no ACC_SYNTHETIC
+            class_def_with(TypeIdx(1), 0x1001, 0xABCD), // canonical R8 outline
+        ];
+        assert_census_matches_oracle(&dex);
+
+        // Scenario 1b: ACC_SYNTHETIC row FIRST, decoy second — canonical
+        // is still the synthetic (and the first one); pins "first
+        // synthetic wins" rather than "last".
+        let mut dex = make_minimal_dexfile();
+        dex.class_defs = vec![
+            class_def_with(TypeIdx(1), 0x1001, 0xABCD), // canonical R8 outline (first)
+            class_def_with(TypeIdx(2), 0x0001, 0xABCD), // decoy after
+        ];
+        assert_census_matches_oracle(&dex);
+
+        // Scenario 1c: two ACC_SYNTHETIC rows at the same offset — the
+        // FIRST synthetic wins (oracle's `.find()` short-circuits).
+        let mut dex = make_minimal_dexfile();
+        dex.class_defs = vec![
+            class_def_with(TypeIdx(2), 0x0001, 0xABCD), // non-synthetic first
+            class_def_with(TypeIdx(3), 0x1001, 0xABCD), // first synthetic — canonical
+            class_def_with(TypeIdx(4), 0x1001, 0xABCD), // second synthetic — NOT chosen
+        ];
+        assert_census_matches_oracle(&dex);
+
+        // Scenario 2: collision, NO row has ACC_SYNTHETIC → first-match
+        // fallback (the resolved row's gate downstream returns None, but
+        // the resolver/map must still agree on WHICH row).
+        let mut dex = make_minimal_dexfile();
+        dex.class_defs = vec![
+            class_def_with(TypeIdx(2), 0x0001, 0xABCD),
+            class_def_with(TypeIdx(1), 0x0001, 0xABCD),
+        ];
+        assert_census_matches_oracle(&dex);
+
+        // Scenario 3: single unique row (production happy path).
+        let mut dex = make_minimal_dexfile();
+        dex.class_defs = vec![class_def_with(TypeIdx(1), 0x1001, 0xABCD)];
+        assert_census_matches_oracle(&dex);
+
+        // Scenario 4: mixed DEX — multiple distinct offsets, one with a
+        // collision, one unique, plus class_data_off == 0 (not special-
+        // cased) so the map equals the oracle for the zero offset too.
+        let mut dex = make_minimal_dexfile();
+        dex.class_defs = vec![
+            class_def_with(TypeIdx(0), 0x0001, 0),      // off 0, non-synthetic first
+            class_def_with(TypeIdx(5), 0x1001, 0),      // off 0, synthetic — canonical for 0
+            class_def_with(TypeIdx(2), 0x0001, 0x1000), // off 0x1000 collision decoy
+            class_def_with(TypeIdx(1), 0x1001, 0x1000), // off 0x1000 collision canonical
+            class_def_with(TypeIdx(6), 0x0009, 0x2000), // off 0x2000 unique, non-synthetic
+        ];
+        assert_census_matches_oracle(&dex);
+    }
+
+    #[test]
+    fn outline_helper_v2_fires_through_census_on_collision_dex() {
+        // End-to-end collision-defense preservation: a DEX with a
+        // class_data_off collision where the decoy (non-ACC_SYNTHETIC)
+        // row is FIRST and the canonical ACC_SYNTHETIC outline row is
+        // second. The recogniser resolves the containing class via the
+        // census lookup; the canonical row must be the synthetic one so
+        // the (access_flags & 0x1000) gate passes and the recogniser
+        // fires. If the census picked the decoy, the gate would return
+        // None and the marker decision would silently flip — the
+        // evasion. A two-instruction body keeps the single-bare-return
+        // floor satisfied so firing is attributable to the resolution.
+        let (mut dex, helper, _census) = abstract_synthetic_helper_dex(vec![
+            Instruction {
+                addr: 0,
+                op: Opcode::SgetObject,
+                size: 2,
+                dst: Some(0),
+                src: RegList::empty(),
+                literal: 0,
+                target: None,
+                pool_idx: None,
+            },
+            Instruction {
+                addr: 2,
+                op: Opcode::ReturnObject,
+                size: 1,
+                dst: Some(0),
+                src: RegList::empty(),
+                literal: 0,
+                target: None,
+                pool_idx: None,
+            },
+        ]);
+        // The builder put one ACC_SYNTHETIC class_def at class_data_off
+        // 0x5000. Plant a non-synthetic decoy at the SAME offset BEFORE
+        // it so a naive `.find()` / first-match would pick the decoy.
+        let canonical = dex.class_defs.remove(0);
+        let decoy_class_idx = TypeIdx(99);
+        dex.class_defs = vec![
+            class_def_with(decoy_class_idx, 0x0001, canonical.class_data_off),
+            canonical,
+        ];
+        // Rebuild the census from the now-collision-bearing class_defs so
+        // its canonical map reflects the planted decoy + canonical.
+        let mut census = build_trampoline_census(&dex);
+        census
+            .method_class_data_off
+            .insert(helper, dex.class_defs[1].class_data_off);
+        census.method_code_off.insert(helper, 0x6000);
+        census
+            .invoke_static_callers
+            .insert(helper, vec![MethodIdx(10), MethodIdx(11)]);
+
+        // Sanity: the census canonical for this offset is the synthetic
+        // (second) row, not the decoy.
+        let canon_idx = census
+            .canonical_class_def_idx(dex.class_defs[1].class_data_off)
+            .expect("census resolves the collision offset");
+        assert_eq!(
+            canon_idx, 1,
+            "census must pick the ACC_SYNTHETIC canonical (index 1), not the decoy (index 0)"
+        );
+
+        let origin = recognise_outline_helper_v2(&dex, helper, &census).expect(
+            "recogniser must still fire on the collision DEX — the census canonical \
+             resolution preserves the ACC_SYNTHETIC defense",
+        );
+        assert!(matches!(origin.variant, R8Transform::StructurallyOutlineLike));
+        assert_eq!(origin.confidence, 40);
+        assert_eq!(origin.caller_count, 2);
+    }
+
     // ── Single-bare-return horizontal-merge-bridge suppression ──────
     //
     // R8's horizontal class merger emits synthetic static stubs whose
@@ -3219,8 +3467,10 @@ mod tests {
         dex.code_items.insert(code_off, code_item_of(body));
 
         // Census: back-pointers + two distinct callers so the
-        // abstract-synthetic ladder admits at confidence 40.
-        let mut census = TrampolineCensus::default();
+        // abstract-synthetic ladder admits at confidence 40. Build the
+        // canonical class_def map from `dex.class_defs` exactly as
+        // production does so the recogniser's census lookup resolves.
+        let mut census = build_trampoline_census(&dex);
         census.method_class_data_off.insert(MethodIdx(0), class_data_off);
         census.method_code_off.insert(MethodIdx(0), code_off);
         census
