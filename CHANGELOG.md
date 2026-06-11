@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-06-11
+
+### Added
+
+- SPR encoder — obfuscation-invariant structural tokenization of parser
+  output (NR / BC / AR rungs: Android-API supertype name erasure,
+  bytecode-shape and arity tokenization).
+- DEX spec-invariant findings now surface to audit: index-keyed ID-pool
+  ordering (`OutOfOrder`), `class_def` topological-order violations and a
+  typed super-chain terminator, unsorted/overlapping `try_items`, non-zero
+  MBZ reserved fields (`map_item` / `method_handle`), and header/map offset
+  disagreement on aliased id-section offsets.
+- Obfuscation features: main-package class-retention count, declared-package
+  threading; Kotlin-rendering-`Indeterminate` class bannering.
+- DEX version `"040"` accepted by the parser oracle.
+- Negative-property proptests for `DexFile::parse` header fields; SPR-encoder
+  fuzz coverage over parser output.
+
+### Fixed
+
+- `desugar()` fixpoint loop bounded to guarantee termination on adversarial
+  input.
+- `string_ids` pool ordering keyed on ART's MUTF-8 collation (UTF-16
+  code-unit order), not raw byte order.
+- R8 outline recogniser rejects single-bare-return synthetic helpers;
+  trampoline census memoizes canonical `class_def` resolution.
+- Emit gated on completeness failures only, not conformance anomalies;
+  parsed `utf16_size` preserved on string-pool emit; `had_terminator`
+  excluded from string-pool round-trip equivalence.
+
 ## [1.0.0] - 2026-05-25
 
 ### Added
