@@ -997,7 +997,7 @@ fn walk_debug_info_section_full(
     //    file/dword alignment). Record as Gap region. Tiling stays
     //    complete.
     // 3. walked <  target_count AND pos == section_end: map_list
-    //    overstates the count (REcon PoC#1: "the count lies"). Surface
+    //    overstates the count (the declared count lies). Surface
     //    as a debug-log finding; tiling stays complete.
     if walked == target_count && pos < section_end {
         let gap_len = section_end.saturating_sub(pos);
